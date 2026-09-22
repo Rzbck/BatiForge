@@ -94,7 +94,18 @@ Target-orientation validation:
 - no full-resolution imagery downloaded;
 - Git worktree remained CLEAN.
 
-Interpretation: Panoramax does have geometrically plausible target-facing candidates, but they remain hundreds of metres from the building. Orientation metadata alone does not prove line of sight, facade visibility, lack of occlusion or enough detail for photogrammetry.
+Preview validation:
+- exact code SHA `d4e0bb8a64b5d9db72f55f82db95d26a76083207`;
+- 7 unit tests: PASS;
+- deterministic shortlist: 24 candidates;
+- explicit thumbnail derivatives downloaded: 24/24;
+- failures: 0;
+- worktree remained CLEAN;
+- human visual inspection showed motorway views, noise barriers, vegetation and unrelated distant structures rather than useful views of the Espace des Forges.
+
+Decision for this reference building: **Panoramax is rejected as a reconstruction-image source**. The provider implementation remains useful as a generic survey provider and as evidence that target bearing/FOV geometry alone cannot establish line of sight or facade usefulness.
+
+Do not spend more time extracting Panoramax full-resolution imagery for the Espace des Forges.
 
 ## Local migration
 
@@ -108,11 +119,12 @@ Migration is complete:
 
 ## NEXT
 
-1. Build a deterministic shortlist from target-in-FOV, front/unknown-FOV and panorama candidates.
-2. Fetch only explicit Panoramax thumbnail derivatives for that shortlist and generate a local visual gallery.
-3. Visually reject occluded/off-target/too-distant candidates before any full-resolution download.
-4. Add the next legal/open imagery provider(s) to the provider-neutral survey model.
-5. Compare coverage from all providers for facade/detail usefulness.
-6. Only then fetch a deliberately selected image set and run controlled COLMAP reconstruction.
+1. Keep the validated Panoramax provider, but stop Panoramax acquisition for this building.
+2. Add KartaView as the next street-level provider: public nearby-photo API, metadata first, no bulk download.
+3. Visually verify whether KartaView has actual close facade coverage before selecting originals.
+4. If street-level coverage is still insufficient, survey Mapillary and Wikimedia/official municipal imagery with explicit per-source licensing/provenance.
+5. Use IGN aerial/orthophoto imagery for roof/planimetric evidence, not as a substitute for facade coverage.
+6. Only run controlled COLMAP when a useful overlapping facade image set exists.
+7. Align/fuse photogrammetry with metric LiDAR/RNB evidence.
 
 Active plan: `docs/exec-plans/active/0001-imagery-survey.md`.
