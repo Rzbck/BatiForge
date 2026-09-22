@@ -17,6 +17,11 @@ Current phase: technical core / research pipeline.
 Repository: `Rzbck/BatiForge`
 Default branch: `main`
 
+Current active work:
+- issue `#4` — Implement imagery survey core;
+- branch `feat/imagery-survey-20260922`;
+- draft PR `#5` — Panoramax imagery survey core.
+
 ## HOST_VALIDATED — local environment
 
 - Windows 11 / PowerShell 7.6.6.
@@ -65,28 +70,47 @@ Do not use that OBJ as final architectural geometry. The isolated raw LiDAR is s
 
 The source mesh is Z-up. Future Blender imports must explicitly preserve intended axes rather than relying on importer defaults.
 
-## Imagery survey status
+## HOST_VALIDATED — imagery survey core
 
-Panoramax coverage exists, including 360° panoramas, but the closest useful panoramas found were about 234 m from the target. They are context candidates, not accepted as sufficient primary facade coverage.
+Exact validated code SHA: `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
 
-No bulk imagery download before current API/license/use constraints and actual facade usefulness are audited.
+Local Windows validation on the Espace des Forges reference config:
+- `uv sync --frozen --python 3.12.11`: PASS;
+- 2 unit tests: PASS;
+- live Panoramax metadata-only survey, radius 500 m: PASS;
+- candidates returned: 340;
+- nearest metadata candidate: 232.24 m from the target;
+- API-reported object license: CC-BY-SA-4.0;
+- output written under the gitignored workspace;
+- no imagery downloaded;
+- Git worktree remained CLEAN.
+
+This independently reproduces the earlier manual result that Panoramax coverage exists but is too far away to assume high-detail facade usefulness. The previously identified visually relevant 360° sequences were around 234 m away.
+
+Do not bulk-download imagery before source/license/use constraints and actual facade usefulness are audited.
 
 ## Removed / not part of BatiForge
 
 The earlier VGGT experiment was removed after testing. Do not restore it merely because it appears in old conversation history.
 
+## Local migration
+
+Migration is complete:
+- `E:\_Project\_ProjectPython\GeoReconstruction` is absent;
+- active root is `E:\_Project\_ProjectPython\BatiForge`;
+- local LiDAR/workspaces were preserved under BatiForge;
+- local COLMAP 4.2.0 was preserved under BatiForge;
+- large local data/tools remain gitignored;
+- local `main` was verified synchronized and CLEAN after migration.
+
 ## NEXT
 
-1. Implement an imagery survey stage.
-2. Query legal/open candidate sources around the selected building.
-3. Produce metadata only first: source, position, distance, date, resolution, viewing information and license/provenance.
-4. Rank/inspect facade usefulness.
+1. Inspect and score Panoramax candidates for actual target visibility, not distance alone.
+2. Preserve only metadata until a source is deliberately selected.
+3. Add the next legal/open imagery provider(s) to the same provider-neutral survey model.
+4. Compare coverage from all providers for facade/detail usefulness.
 5. Only then fetch a selected image set.
 6. Run the first controlled COLMAP reconstruction.
 7. Align/fuse photogrammetry with metric LiDAR/RNB evidence.
 
 Active plan: `docs/exec-plans/active/0001-imagery-survey.md`.
-
-## Local migration note
-
-The existing local `GeoReconstruction` prototype contains the validated raw/workspace data and tool install. During migration it should be moved into the BatiForge local root while large assets remain gitignored. Delete the old path only after the new local BatiForge checkout is verified and synchronized with GitHub.
