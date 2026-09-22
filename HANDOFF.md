@@ -17,6 +17,11 @@ Current phase: technical core / research pipeline.
 Repository: `Rzbck/BatiForge`
 Default branch: `main`
 
+Current active work:
+- issue `#4` — Implement imagery survey core;
+- branch `feat/imagery-survey-20260922`;
+- PR `#5` — Panoramax imagery survey core.
+
 ## HOST_VALIDATED — local environment
 
 - Windows 11 / PowerShell 7.6.6.
@@ -42,7 +47,6 @@ Building authority:
 
 IGN point cloud:
 - primary tile `LHD_FXX_0940_6540_PTS_LAMB93_IGN69.copc.laz`
-- building extraction uses the authoritative RNB footprint
 - isolated building cloud: 19,404 class-6 points
 - density: approximately 45.3 building points/m²
 - local ground median: approximately 427.77 m IGN69
@@ -65,28 +69,62 @@ Do not use that OBJ as final architectural geometry. The isolated raw LiDAR is s
 
 The source mesh is Z-up. Future Blender imports must explicitly preserve intended axes rather than relying on importer defaults.
 
-## Imagery survey status
+## HOST_VALIDATED — imagery survey core
 
-Panoramax coverage exists, including 360° panoramas, but the closest useful panoramas found were about 234 m from the target. They are context candidates, not accepted as sufficient primary facade coverage.
+First metadata-only survey validation:
+- code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`;
+- 2 unit tests PASS;
+- live Panoramax survey at 500 m PASS;
+- 340 candidates;
+- nearest metadata candidate 232.24 m;
+- no imagery downloaded;
+- worktree CLEAN.
 
-No bulk imagery download before current API/license/use constraints and actual facade usefulness are audited.
+Target-orientation validation:
+- exact code SHA `f457ac0fe0af5d75179ac55708db8ac3902af02f`;
+- `uv sync --frozen --python 3.12.11`: PASS;
+- 4 unit tests: PASS;
+- live Panoramax survey: PASS;
+- 340 candidates across 13 sequences;
+- view classes: 32 panoramic, 32 front, 174 lateral, 102 rear, 0 unknown;
+- target-in-FOV: 55 true, 78 false, 207 unknown;
+- nearest non-360 front candidate: 281.03 m;
+- nearest non-360 candidate with target_in_fov=True: 291.30 m;
+- nearest panorama in the orientation report: 233.94 m;
+- no full-resolution imagery downloaded;
+- Git worktree remained CLEAN.
 
-## Removed / not part of BatiForge
+Preview validation:
+- exact code SHA `d4e0bb8a64b5d9db72f55f82db95d26a76083207`;
+- 7 unit tests: PASS;
+- deterministic shortlist: 24 candidates;
+- explicit thumbnail derivatives downloaded: 24/24;
+- failures: 0;
+- worktree remained CLEAN;
+- human visual inspection showed motorway views, noise barriers, vegetation and unrelated distant structures rather than useful views of the Espace des Forges.
 
-The earlier VGGT experiment was removed after testing. Do not restore it merely because it appears in old conversation history.
+Decision for this reference building: **Panoramax is rejected as a reconstruction-image source**. The provider implementation remains useful as a generic survey provider and as evidence that target bearing/FOV geometry alone cannot establish line of sight or facade usefulness.
+
+Do not spend more time extracting Panoramax full-resolution imagery for the Espace des Forges.
+
+## Local migration
+
+Migration is complete:
+- `E:\_Project\_ProjectPython\GeoReconstruction` is absent;
+- active root is `E:\_Project\_ProjectPython\BatiForge`;
+- local LiDAR/workspaces were preserved under BatiForge;
+- local COLMAP 4.2.0 was preserved under BatiForge;
+- large local data/tools remain gitignored;
+- local `main` was verified synchronized and CLEAN after migration.
 
 ## NEXT
 
-1. Implement an imagery survey stage.
-2. Query legal/open candidate sources around the selected building.
-3. Produce metadata only first: source, position, distance, date, resolution, viewing information and license/provenance.
-4. Rank/inspect facade usefulness.
-5. Only then fetch a selected image set.
-6. Run the first controlled COLMAP reconstruction.
+1. Keep the validated Panoramax provider, but stop Panoramax acquisition for this building.
+2. Add KartaView as the next street-level provider: public nearby-photo API, metadata first, no bulk download.
+3. Visually verify whether KartaView has actual close facade coverage before selecting originals.
+4. If street-level coverage is still insufficient, survey Mapillary and Wikimedia/official municipal imagery with explicit per-source licensing/provenance.
+5. Use IGN aerial/orthophoto imagery for roof/planimetric evidence, not as a substitute for facade coverage.
+6. Only run controlled COLMAP when a useful overlapping facade image set exists.
 7. Align/fuse photogrammetry with metric LiDAR/RNB evidence.
 
 Active plan: `docs/exec-plans/active/0001-imagery-survey.md`.
-
-## Local migration note
-
-The existing local `GeoReconstruction` prototype contains the validated raw/workspace data and tool install. During migration it should be moved into the BatiForge local root while large assets remain gitignored. Delete the old path only after the new local BatiForge checkout is verified and synchronized with GitHub.
