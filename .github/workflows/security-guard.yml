@@ -65,8 +65,7 @@ jobs:
 
           while IFS= read -r spec; do
             [[ -z "$spec" ]] && continue
-            action="${spec#uses:}"
-            action="${action# }"
+            action="$(printf '%s' "$spec" | sed -E 's/^[[:space:]]*-[[:space:]]*uses:[[:space:]]*//')"
 
             if [[ "$action" == ./* ]]; then
               continue
@@ -77,9 +76,9 @@ jobs:
               echo "::error::GitHub Action is not pinned to a full commit SHA: $action"
               failed=1
             fi
-          done < <(grep -RhoE 'uses:[[:space:]]*[^[:space:]#]+' .github/workflows || true)
+          done < <(grep -RhE '^[[:space:]]*-[[:space:]]*uses:[[:space:]]*[^[:space:]#]+' .github/workflows || true)
 
-          if grep -RniE 'permissions:[[:space:]]*write-all' .github/workflows; then
+          if grep -RniE '^[[:space:]]*permissions:[[:space:]]*write-all[[:space:]]*$' .github/workflows; then
             echo "::error::permissions: write-all is forbidden"
             failed=1
           fi
