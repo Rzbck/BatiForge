@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "batiforge"
+version = "0.1.0"
+description = "Open geospatial building reconstruction pipeline"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "laspy[cli,lazrs]>=2.7,<3",
+    "numpy>=2,<3",
+    "pyproj>=3.7,<4",
+    "requests>=2.32,<3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/batiforge"]
