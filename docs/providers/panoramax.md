@@ -1,6 +1,6 @@
 # Panoramax provider
 
-Status: metadata-only survey with target-orientation analysis.
+Status: metadata survey plus bounded thumbnail-preview inspection.
 
 BatiForge uses Panoramax as an imagery-discovery provider, not as an implicit
 license grant for arbitrary downstream use.
@@ -13,10 +13,9 @@ and items represent pictures. Picture discovery is available through
 
 Official documentation:
 - https://docs.panoramax.fr/backend/api/api/
-- https://docs.panoramax.fr/web-viewer/05_Compatibility/
-- https://docs.panoramax.fr/federated-catalog/data_export/
+- https://docs.panoramax.fr/backend/dev/STAC_compatibility/
 
-The default endpoint is:
+The initial default endpoint is:
 
 `https://panoramax.openstreetmap.fr/api`
 
@@ -35,27 +34,7 @@ bulk-download imagery during discovery.
 Official license-setting documentation:
 - https://docs.panoramax.fr/backend/install/settings/#pictures-license
 
-## View metadata
-
-Panoramax/STAC exposes `view:azimuth` for picture heading. Perspective metadata
-can expose horizontal field of view under
-`pers:interior_orientation.field_of_view`. Panoramax metadata also distinguishes
-360/equirectangular imagery from flat imagery when that information is known.
-
-For every candidate BatiForge now computes:
-- bearing from camera position to the target;
-- smallest heading error relative to the target;
-- coarse horizontal class: `front`, `lateral`, `rear`, `panoramic`, or `unknown`;
-- whether the target coordinate falls inside the reported horizontal field of
-  view when enough metadata exists;
-- deterministic per-sequence summary counts.
-
-This classification is deliberately geometric only. `target_in_fov=true` does
-not prove that the building is visible: terrain, vegetation, other buildings,
-image framing, capture height, blur and resolution can still make a picture
-useless. Visual preview remains a separate selection stage.
-
-## Current stage
+## Survey stage
 
 The provider currently:
 - searches a radius-derived WGS84 bounding box;
@@ -64,9 +43,31 @@ The provider currently:
 - records stable picture and sequence identifiers;
 - records capture date, image dimensions and view metadata when present;
 - records source and license references;
-- computes target-facing geometry without downloading image pixels;
-- groups candidates by sequence in the survey output;
+- calculates target bearing, heading error and target-in-FOV when metadata allows;
 - emits deterministically sorted metadata JSON.
 
-Full-resolution image download and photogrammetric selection remain separate
-later stages.
+Orientation scoring is geometry only. It does not prove line of sight,
+occlusion state, actual facade visibility or sufficient photogrammetric detail.
+
+## Preview inspection stage
+
+Panoramax/STAC items may advertise an explicit thumbnail derivative through:
+- `properties.geovisio:thumbnail`; or
+- an asset with the `thumbnail` role.
+
+BatiForge's preview stage deliberately requests the item metadata first and then
+fetches only an explicitly advertised thumbnail derivative. It does not fall
+back to `visual`, `data`, tiled or original/high-definition assets.
+
+The shortlist is deterministic and sequence-capped. Priority is:
+1. non-panoramic candidates with `target_in_fov=true`;
+2. non-panoramic `front` candidates whose FOV is unknown;
+3. panoramas.
+
+A candidate with known `target_in_fov=false` is not promoted merely because its
+heading is inside the broader `front` class.
+
+Preview files, manifest and HTML gallery belong under a gitignored workspace and
+are for human visual rejection/selection only. They are not COLMAP inputs.
+
+Full-resolution image selection/download remains a later deliberate stage.

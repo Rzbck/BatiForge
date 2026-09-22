@@ -20,7 +20,7 @@ Default branch: `main`
 Current active work:
 - issue `#4` — Implement imagery survey core;
 - branch `feat/imagery-survey-20260922`;
-- draft PR `#5` — Panoramax imagery survey core.
+- PR `#5` — Panoramax imagery survey core.
 
 ## HOST_VALIDATED — local environment
 
@@ -47,7 +47,6 @@ Building authority:
 
 IGN point cloud:
 - primary tile `LHD_FXX_0940_6540_PTS_LAMB93_IGN69.copc.laz`
-- building extraction uses the authoritative RNB footprint
 - isolated building cloud: 19,404 class-6 points
 - density: approximately 45.3 building points/m²
 - local ground median: approximately 427.77 m IGN69
@@ -72,26 +71,30 @@ The source mesh is Z-up. Future Blender imports must explicitly preserve intende
 
 ## HOST_VALIDATED — imagery survey core
 
-Exact validated code SHA: `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
-
-Local Windows validation on the Espace des Forges reference config:
-- `uv sync --frozen --python 3.12.11`: PASS;
-- 2 unit tests: PASS;
-- live Panoramax metadata-only survey, radius 500 m: PASS;
-- candidates returned: 340;
-- nearest metadata candidate: 232.24 m from the target;
-- API-reported object license: CC-BY-SA-4.0;
-- output written under the gitignored workspace;
+First metadata-only survey validation:
+- code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`;
+- 2 unit tests PASS;
+- live Panoramax survey at 500 m PASS;
+- 340 candidates;
+- nearest metadata candidate 232.24 m;
 - no imagery downloaded;
+- worktree CLEAN.
+
+Target-orientation validation:
+- exact code SHA `f457ac0fe0af5d75179ac55708db8ac3902af02f`;
+- `uv sync --frozen --python 3.12.11`: PASS;
+- 4 unit tests: PASS;
+- live Panoramax survey: PASS;
+- 340 candidates across 13 sequences;
+- view classes: 32 panoramic, 32 front, 174 lateral, 102 rear, 0 unknown;
+- target-in-FOV: 55 true, 78 false, 207 unknown;
+- nearest non-360 front candidate: 281.03 m;
+- nearest non-360 candidate with target_in_fov=True: 291.30 m;
+- nearest panorama in the orientation report: 233.94 m;
+- no full-resolution imagery downloaded;
 - Git worktree remained CLEAN.
 
-This independently reproduces the earlier manual result that Panoramax coverage exists but is too far away to assume high-detail facade usefulness. The previously identified visually relevant 360° sequences were around 234 m away.
-
-Do not bulk-download imagery before source/license/use constraints and actual facade usefulness are audited.
-
-## Removed / not part of BatiForge
-
-The earlier VGGT experiment was removed after testing. Do not restore it merely because it appears in old conversation history.
+Interpretation: Panoramax does have geometrically plausible target-facing candidates, but they remain hundreds of metres from the building. Orientation metadata alone does not prove line of sight, facade visibility, lack of occlusion or enough detail for photogrammetry.
 
 ## Local migration
 
@@ -105,12 +108,11 @@ Migration is complete:
 
 ## NEXT
 
-1. Inspect and score Panoramax candidates for actual target visibility, not distance alone.
-2. Preserve only metadata until a source is deliberately selected.
-3. Add the next legal/open imagery provider(s) to the same provider-neutral survey model.
-4. Compare coverage from all providers for facade/detail usefulness.
-5. Only then fetch a selected image set.
-6. Run the first controlled COLMAP reconstruction.
-7. Align/fuse photogrammetry with metric LiDAR/RNB evidence.
+1. Build a deterministic shortlist from target-in-FOV, front/unknown-FOV and panorama candidates.
+2. Fetch only explicit Panoramax thumbnail derivatives for that shortlist and generate a local visual gallery.
+3. Visually reject occluded/off-target/too-distant candidates before any full-resolution download.
+4. Add the next legal/open imagery provider(s) to the provider-neutral survey model.
+5. Compare coverage from all providers for facade/detail usefulness.
+6. Only then fetch a deliberately selected image set and run controlled COLMAP reconstruction.
 
 Active plan: `docs/exec-plans/active/0001-imagery-survey.md`.

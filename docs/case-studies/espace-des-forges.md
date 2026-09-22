@@ -44,17 +44,26 @@ A regular-grid LiDAR proxy mesh preserved scale and rough volume but produced te
 
 ## Imagery
 
-The first versioned Panoramax survey implementation was host-validated at code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
+The metadata-only Panoramax survey was first host-validated at code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
 
-For a 500 m radius around the reference coordinate it returned:
-- 340 metadata candidates;
-- nearest candidate at 232.24 m;
-- API-reported object license CC-BY-SA-4.0;
-- metadata-only output under the gitignored workspace;
-- no image downloads.
+For a 500 m radius around the reference coordinate it returned 340 metadata candidates and no image downloads.
 
-The earlier manual inspection identified visually relevant 360° sequences at roughly 234 m. This remains too distant to assume useful high-detail facade coverage, so candidate visibility still needs to be inspected before any image set is selected.
+Target-orientation scoring was then host-validated at exact code SHA `f457ac0fe0af5d75179ac55708db8ac3902af02f`:
+- 340 candidates across 13 sequences;
+- 32 panoramic;
+- 32 front;
+- 174 lateral;
+- 102 rear;
+- 0 unknown orientation;
+- 55 candidates with target_in_fov=True;
+- 78 with target_in_fov=False;
+- 207 with unknown FOV;
+- nearest non-360 front candidate: 281.03 m;
+- nearest non-360 target-in-FOV candidate: 291.30 m;
+- nearest panorama in the report: 233.94 m.
+
+This proves that some Panoramax candidates are geometrically compatible with looking toward the target, but they are still hundreds of metres away. Geometry does not prove that the building is visible, unoccluded or detailed enough for reconstruction.
 
 ## Current next step
 
-Inspect/score Panoramax candidates for actual target visibility, survey additional legal/open imagery sources without bulk downloading them, compare coverage, then run a controlled COLMAP reconstruction only if a useful overlapping image set exists.
+Generate a small deterministic shortlist, fetch only explicit Panoramax thumbnail derivatives for visual inspection, reject bad/occluded candidates, then compare against additional legal/open imagery providers before selecting any full-resolution image set for COLMAP.
