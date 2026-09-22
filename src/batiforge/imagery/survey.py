@@ -59,12 +59,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"BatiForge imagery survey failed: {exc}", file=sys.stderr)
         return 2
 
+    payload_dict = result.to_dict()
     payload = result.to_json()
+    summary = payload_dict["summary"]
+    view_counts = summary["view_class_counts"]
+    in_fov_counts = summary["target_in_fov_counts"]
+
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload, encoding="utf-8", newline="\n")
         print(
-            f"{result.provider}: {len(result.candidates)} candidates -> {args.output}"
+            f"{result.provider}: {len(result.candidates)} candidates, "
+            f"{summary['sequence_count']} sequences, "
+            f"{view_counts['front']} front, "
+            f"{view_counts['panoramic']} panoramic, "
+            f"{in_fov_counts['true']} target-in-fov -> {args.output}"
         )
     else:
         sys.stdout.write(payload)

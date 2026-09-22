@@ -5,7 +5,13 @@ from typing import Any
 
 import requests
 
-from .models import ImageCandidate, SurveyResult, haversine_distance_m
+from .models import (
+    ImageCandidate,
+    SurveyResult,
+    classify_view_geometry,
+    haversine_distance_m,
+    initial_bearing_deg,
+)
 
 
 class PanoramaxError(RuntimeError):
@@ -132,7 +138,6 @@ class PanoramaxProvider:
                 "license_url",
             )
         except PanoramaxError:
-            # The STAC landing page is the standards-compatible fallback.
             config = {}
 
         try:
@@ -185,14 +190,24 @@ class PanoramaxProvider:
             "panoramax:heading",
             "heading",
         )
-        fov = _first_number(
-            properties,
-            "view:fov",
-            "pers:horizontal_fov",
-            "panoramax:horizontal_fov",
+        if heading is not None:
+            heading %= 360.0
+
+        fov = _field_of_view(properties)
+        panoramic = _panoramic_flag(properties, fov)
+        target_bearing = initial_bearing_deg(
+            latitude,
+            longitude,
+            target_latitude,
+            target_longitude,
+        )
+        view_class, heading_error, target_in_fov = classify_view_geometry(
+            heading_deg=heading,
+            target_bearing_deg=target_bearing,
+            field_of_view_deg=fov,
+            panoramic=panoramic,
         )
 
-        panoramic = _panoramic_flag(properties)
         sequence_id = _optional_string(
             feature.get("collection") or properties.get("collection")
         )
@@ -232,6 +247,10 @@ class PanoramaxProvider:
             source_url=source_url,
             license_id=license_id,
             license_url=license_url,
+            target_bearing_deg=round(target_bearing, 3),
+            heading_error_deg=round(heading_error, 3) if heading_error is not None else None,
+            target_in_fov=target_in_fov,
+            view_class=view_class,
         )
 
     def _request_json(
@@ -309,6 +328,24 @@ def _first_number(mapping: dict[str, Any], *keys: str) -> float | None:
     return None
 
 
+def _field_of_view(properties: dict[str, Any]) -> float | None:
+    direct = _first_number(
+        properties,
+        "view:fov",
+        "pers:horizontal_fov",
+        "panoramax:horizontal_fov",
+        "field_of_view",
+    )
+    if direct is not None:
+        return direct
+
+    interior = properties.get("pers:interior_orientation")
+    if isinstance(interior, dict):
+        return _first_number(interior, "field_of_view", "horizontal_fov")
+
+    return None
+
+
 def _image_dimensions(
     feature: dict[str, Any],
     properties: dict[str, Any],
@@ -340,7 +377,10 @@ def _image_dimensions(
     return None, None
 
 
-def _panoramic_flag(properties: dict[str, Any]) -> bool | None:
+def _panoramic_flag(
+    properties: dict[str, Any],
+    field_of_view_deg: float | None,
+) -> bool | None:
     for key in ("panoramax:is_panoramic", "is_panoramic", "panoramic"):
         value = properties.get(key)
         if isinstance(value, bool):
@@ -351,7 +391,10 @@ def _panoramic_flag(properties: dict[str, Any]) -> bool | None:
         normalized = view_type.lower()
         if normalized in {"equirectangular", "spherical", "panorama", "360"}:
             return True
-        if normalized in {"perspective", "rectilinear"}:
+        if normalized in {"perspective", "rectilinear", "flat"}:
             return False
+
+    if field_of_view_deg is not None and field_of_view_deg >= 359.0:
+        return True
 
     return None

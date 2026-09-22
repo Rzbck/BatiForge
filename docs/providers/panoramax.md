@@ -1,6 +1,6 @@
 # Panoramax provider
 
-Status: initial metadata-only implementation.
+Status: metadata-only survey with target-orientation analysis.
 
 BatiForge uses Panoramax as an imagery-discovery provider, not as an implicit
 license grant for arbitrary downstream use.
@@ -13,9 +13,10 @@ and items represent pictures. Picture discovery is available through
 
 Official documentation:
 - https://docs.panoramax.fr/backend/api/api/
-- https://docs.panoramax.fr/backend/dev/STAC_compatibility/
+- https://docs.panoramax.fr/web-viewer/05_Compatibility/
+- https://docs.panoramax.fr/federated-catalog/data_export/
 
-The initial default endpoint is:
+The default endpoint is:
 
 `https://panoramax.openstreetmap.fr/api`
 
@@ -34,6 +35,26 @@ bulk-download imagery during discovery.
 Official license-setting documentation:
 - https://docs.panoramax.fr/backend/install/settings/#pictures-license
 
+## View metadata
+
+Panoramax/STAC exposes `view:azimuth` for picture heading. Perspective metadata
+can expose horizontal field of view under
+`pers:interior_orientation.field_of_view`. Panoramax metadata also distinguishes
+360/equirectangular imagery from flat imagery when that information is known.
+
+For every candidate BatiForge now computes:
+- bearing from camera position to the target;
+- smallest heading error relative to the target;
+- coarse horizontal class: `front`, `lateral`, `rear`, `panoramic`, or `unknown`;
+- whether the target coordinate falls inside the reported horizontal field of
+  view when enough metadata exists;
+- deterministic per-sequence summary counts.
+
+This classification is deliberately geometric only. `target_in_fov=true` does
+not prove that the building is visible: terrain, vegetation, other buildings,
+image framing, capture height, blur and resolution can still make a picture
+useless. Visual preview remains a separate selection stage.
+
 ## Current stage
 
 The provider currently:
@@ -43,7 +64,9 @@ The provider currently:
 - records stable picture and sequence identifiers;
 - records capture date, image dimensions and view metadata when present;
 - records source and license references;
+- computes target-facing geometry without downloading image pixels;
+- groups candidates by sequence in the survey output;
 - emits deterministically sorted metadata JSON.
 
-Image download, facade-visibility scoring and photogrammetric selection remain
-separate later stages.
+Full-resolution image download and photogrammetric selection remain separate
+later stages.

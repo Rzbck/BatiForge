@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 import unittest
 
-from batiforge.imagery.models import haversine_distance_m
+from batiforge.imagery.models import (
+    angular_difference_deg,
+    classify_view_geometry,
+    haversine_distance_m,
+    initial_bearing_deg,
+)
 from batiforge.imagery.panoramax import PanoramaxProvider
 
 
@@ -61,8 +66,11 @@ class _Session:
                             },
                             "properties": {
                                 "datetime": "2026-01-01T12:00:00Z",
-                                "view:azimuth": 92.5,
+                                "view:azimuth": 270.0,
                                 "proj:shape": [3000, 4000],
+                                "pers:interior_orientation": {
+                                    "field_of_view": 90,
+                                },
                             },
                             "links": [
                                 {
@@ -93,6 +101,53 @@ class PanoramaxProviderTests(unittest.TestCase):
     def test_haversine_zero(self) -> None:
         self.assertEqual(haversine_distance_m(45.0, 6.0, 45.0, 6.0), 0.0)
 
+    def test_bearing_and_angular_difference(self) -> None:
+        self.assertAlmostEqual(initial_bearing_deg(0.0, 0.0, 1.0, 0.0), 0.0)
+        self.assertAlmostEqual(initial_bearing_deg(0.0, 0.0, 0.0, 1.0), 90.0)
+        self.assertEqual(angular_difference_deg(359.0, 1.0), 2.0)
+        self.assertEqual(angular_difference_deg(10.0, 190.0), 180.0)
+
+    def test_view_geometry_classes(self) -> None:
+        front = classify_view_geometry(
+            heading_deg=5.0,
+            target_bearing_deg=0.0,
+            field_of_view_deg=60.0,
+            panoramic=False,
+        )
+        self.assertEqual(front, ("front", 5.0, True))
+
+        lateral = classify_view_geometry(
+            heading_deg=90.0,
+            target_bearing_deg=0.0,
+            field_of_view_deg=90.0,
+            panoramic=False,
+        )
+        self.assertEqual(lateral, ("lateral", 90.0, False))
+
+        rear = classify_view_geometry(
+            heading_deg=180.0,
+            target_bearing_deg=0.0,
+            field_of_view_deg=90.0,
+            panoramic=False,
+        )
+        self.assertEqual(rear, ("rear", 180.0, False))
+
+        panoramic = classify_view_geometry(
+            heading_deg=None,
+            target_bearing_deg=270.0,
+            field_of_view_deg=360.0,
+            panoramic=True,
+        )
+        self.assertEqual(panoramic, ("panoramic", None, True))
+
+        unknown = classify_view_geometry(
+            heading_deg=None,
+            target_bearing_deg=270.0,
+            field_of_view_deg=None,
+            panoramic=None,
+        )
+        self.assertEqual(unknown, ("unknown", None, None))
+
     def test_metadata_only_survey_filters_by_radius_and_is_deterministic(self) -> None:
         provider = PanoramaxProvider(
             endpoint="https://example.test/api",
@@ -112,15 +167,25 @@ class PanoramaxProviderTests(unittest.TestCase):
         self.assertEqual(candidate.sequence_id, "sequence-a")
         self.assertEqual(candidate.width, 4000)
         self.assertEqual(candidate.height, 3000)
-        self.assertEqual(candidate.heading_deg, 92.5)
+        self.assertEqual(candidate.heading_deg, 270.0)
+        self.assertEqual(candidate.field_of_view_deg, 90.0)
         self.assertLess(candidate.distance_m, 10.0)
         self.assertEqual(candidate.license_id, "etalab-2.0")
+        self.assertAlmostEqual(candidate.target_bearing_deg or 0.0, 270.0, delta=0.1)
+        self.assertLess(candidate.heading_error_deg or 999.0, 0.1)
+        self.assertTrue(candidate.target_in_fov)
+        self.assertEqual(candidate.view_class, "front")
 
         first = result.to_json()
         second = result.to_json()
         self.assertEqual(first, second)
         decoded = json.loads(first)
+        self.assertEqual(decoded["schema_version"], 2)
         self.assertEqual(decoded["candidate_count"], 1)
+        self.assertEqual(decoded["summary"]["sequence_count"], 1)
+        self.assertEqual(decoded["summary"]["view_class_counts"]["front"], 1)
+        self.assertEqual(decoded["summary"]["target_in_fov_counts"]["true"], 1)
+        self.assertEqual(decoded["sequences"][0]["sequence_id"], "sequence-a")
         self.assertEqual(decoded["candidates"][0]["source_id"], "near-picture")
 
 
