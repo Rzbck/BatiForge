@@ -1,0 +1,8 @@
+# Default owner for all repository content.
+* @Rzbck
+
+# Security-sensitive automation and policies.
+/.github/ @Rzbck
+/SECURITY.md @Rzbck
+/AGENTS.md @Rzbck
+/HANDOFF.md @Rzbck
