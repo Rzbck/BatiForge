@@ -172,7 +172,8 @@ class PanoramaxProviderTests(unittest.TestCase):
         self.assertLess(candidate.distance_m, 10.0)
         self.assertEqual(candidate.license_id, "etalab-2.0")
         self.assertAlmostEqual(candidate.target_bearing_deg or 0.0, 270.0, delta=0.1)
-        self.assertLess(candidate.heading_error_deg or 999.0, 0.1)
+        self.assertIsNotNone(candidate.heading_error_deg)
+        self.assertAlmostEqual(candidate.heading_error_deg, 0.0, delta=0.1)
         self.assertTrue(candidate.target_in_fov)
         self.assertEqual(candidate.view_class, "front")
 
