@@ -62,8 +62,20 @@ Target-orientation scoring was then host-validated at exact code SHA `f457ac0fe0
 - nearest non-360 target-in-FOV candidate: 291.30 m;
 - nearest panorama in the report: 233.94 m.
 
-This proves that some Panoramax candidates are geometrically compatible with looking toward the target, but they are still hundreds of metres away. Geometry does not prove that the building is visible, unoccluded or detailed enough for reconstruction.
+A bounded preview stage was then host-validated at exact code SHA `d4e0bb8a64b5d9db72f55f82db95d26a76083207`:
+- 7 unit tests PASS;
+- 24 deterministic shortlist entries;
+- 24 explicit Panoramax thumbnail derivatives downloaded;
+- 0 failures;
+- no full-resolution/original imagery used;
+- Git remained CLEAN.
+
+Human inspection of the generated gallery showed motorway carriageways, noise barriers, vegetation and unrelated distant buildings. The Espace des Forges is not usefully visible in the shortlisted frames. The geometric `front` / `target_in_fov` signals were therefore not sufficient to establish real facade visibility.
+
+### Decision
+
+Panoramax coverage is **rejected for Espace des Forges reconstruction**. Keep the Panoramax provider in BatiForge as a generic source adapter, but do not spend more time downloading or reconstructing from Panoramax imagery for this building.
 
 ## Current next step
 
-Generate a small deterministic shortlist, fetch only explicit Panoramax thumbnail derivatives for visual inspection, reject bad/occluded candidates, then compare against additional legal/open imagery providers before selecting any full-resolution image set for COLMAP.
+Survey KartaView next using its public nearby-photo API, metadata first. If it has real close facade coverage, build the same bounded preview workflow. If not, continue with Mapillary plus Wikimedia/official municipal imagery, while using IGN aerial imagery only for roof/planimetric evidence.
