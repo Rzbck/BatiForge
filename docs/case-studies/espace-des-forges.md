@@ -44,8 +44,17 @@ A regular-grid LiDAR proxy mesh preserved scale and rough volume but produced te
 
 ## Imagery
 
-Panoramax coverage exists around the site, but the closest useful 360° panoramas found during the survey are about 234 m away. They may help with context but are not accepted as sufficient primary facade coverage.
+The first versioned Panoramax survey implementation was host-validated at code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
+
+For a 500 m radius around the reference coordinate it returned:
+- 340 metadata candidates;
+- nearest candidate at 232.24 m;
+- API-reported object license CC-BY-SA-4.0;
+- metadata-only output under the gitignored workspace;
+- no image downloads.
+
+The earlier manual inspection identified visually relevant 360° sequences at roughly 234 m. This remains too distant to assume useful high-detail facade coverage, so candidate visibility still needs to be inspected before any image set is selected.
 
 ## Current next step
 
-Survey additional legal/open imagery sources without bulk downloading them, evaluate real facade coverage, then run a controlled COLMAP reconstruction.
+Inspect/score Panoramax candidates for actual target visibility, survey additional legal/open imagery sources without bulk downloading them, compare coverage, then run a controlled COLMAP reconstruction only if a useful overlapping image set exists.
