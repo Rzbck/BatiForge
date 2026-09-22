@@ -1,0 +1,62 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local BatiForge data
+workspaces/
+data/
+downloads/
+artifacts/
+outputs/
+cache/
+
+# Native tools: keep documentation only
+tools/*
+!tools/README.md
+
+# Point clouds / reconstruction products
+*.las
+*.laz
+*.copc.laz
+*.e57
+*.pcd
+*.ply
+
+# Generated 3D assets
+*.obj
+*.fbx
+*.glb
+*.gltf
+*.blend
+*.blend1
+
+# COLMAP / local databases
+database.db
+*.sqlite
+*.sqlite3
+
+# Logs / temporary
+*.log
+*.tmp
+*.partial
+*.bak
+
+# OS / editors
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
