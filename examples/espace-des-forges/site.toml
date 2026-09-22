@@ -1,0 +1,13 @@
+name = "Espace des Forges"
+slug = "espace-des-forges"
+latitude = 45.9086611
+longitude = 6.0984374
+rnb_id = "1A6BNQQ3VXGZ"
+bdtopo_id = "BATIMENT0000000298370002"
+
+[source_crs]
+horizontal = "EPSG:2154"
+vertical = "IGN69"
+
+[reference]
+case_study = "docs/case-studies/espace-des-forges.md"
