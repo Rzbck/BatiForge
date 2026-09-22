@@ -8,9 +8,9 @@ Do not reconstruct current state from a previous chat. Re-fetch Git, inspect bra
 
 BatiForge aims to become a map-driven building reconstruction system:
 
-map/building selection -> authoritative building identity -> footprints + geospatial metadata -> LiDAR/point clouds -> legal/open imagery -> photogrammetry -> metric/georeferenced fusion -> clean 3D asset export.
+map/building selection -> authoritative building identity -> footprints + geospatial metadata -> LiDAR/point clouds -> optional legal/open imagery -> metric/georeferenced reconstruction -> clean 3D asset export.
 
-Current phase: technical core / research pipeline.
+Current phase: building-centric technical core / research pipeline.
 
 ## Repository
 
@@ -18,9 +18,11 @@ Repository: `Rzbck/BatiForge`
 Default branch: `main`
 
 Current active work:
-- issue `#4` — Implement imagery survey core;
-- branch `feat/imagery-survey-20260922`;
-- PR `#5` — Panoramax imagery survey core.
+- issue `#7` — Implement building-centric reconstruction core;
+- branch `feat/building-core-20260922`;
+- active plan `docs/exec-plans/active/0002-building-core.md`.
+
+Imagery survey core was merged to `main` through PR `#5` at merge commit `9d7261c219c76aaa4cabd3db7e41e58c33919a63`.
 
 ## HOST_VALIDATED — local environment
 
@@ -63,7 +65,7 @@ The high structure is real enough to preserve, although the exact extreme tip is
 
 ## EXPERIMENTAL / rejected as production geometry
 
-A 0.25 m grid-based LiDAR proxy OBJ was generated and inspected in Blender. It preserved scale/rough volume but produced terrace/step artifacts from grid interpolation and vertical extrusion.
+A 0.25 m regular-grid LiDAR proxy OBJ was generated and inspected in Blender. It preserved scale/rough volume but produced terrace/step artifacts from grid interpolation and vertical extrusion.
 
 Do not use that OBJ as final architectural geometry. The isolated raw LiDAR is stronger evidence.
 
@@ -71,41 +73,26 @@ The source mesh is Z-up. Future Blender imports must explicitly preserve intende
 
 ## HOST_VALIDATED — imagery survey core
 
-First metadata-only survey validation:
-- code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`;
-- 2 unit tests PASS;
-- live Panoramax survey at 500 m PASS;
-- 340 candidates;
-- nearest metadata candidate 232.24 m;
-- no imagery downloaded;
-- worktree CLEAN.
+Panoramax metadata/orientation/preview survey is implemented and merged. The provider is useful generically, but **Panoramax is rejected as a reconstruction-image source for the Espace des Forges** after thumbnail inspection showed motorway/noise-barrier/vegetation coverage rather than useful building views.
 
-Target-orientation validation:
-- exact code SHA `f457ac0fe0af5d75179ac55708db8ac3902af02f`;
-- `uv sync --frozen --python 3.12.11`: PASS;
-- 4 unit tests: PASS;
-- live Panoramax survey: PASS;
-- 340 candidates across 13 sequences;
-- view classes: 32 panoramic, 32 front, 174 lateral, 102 rear, 0 unknown;
-- target-in-FOV: 55 true, 78 false, 207 unknown;
-- nearest non-360 front candidate: 281.03 m;
-- nearest non-360 candidate with target_in_fov=True: 291.30 m;
-- nearest panorama in the orientation report: 233.94 m;
-- no full-resolution imagery downloaded;
-- Git worktree remained CLEAN.
+KartaView was then probed metadata-first. Five nearby API results were returned, but their actual camera positions were still roughly 232–255 m from the target and thumbnail inspection again showed road imagery unrelated to the building. KartaView provider implementation was therefore stopped for this reference case; issue `#6` was closed as not planned.
 
-Preview validation:
-- exact code SHA `d4e0bb8a64b5d9db72f55f82db95d26a76083207`;
-- 7 unit tests: PASS;
-- deterministic shortlist: 24 candidates;
-- explicit thumbnail derivatives downloaded: 24/24;
-- failures: 0;
-- worktree remained CLEAN;
-- human visual inspection showed motorway views, noise barriers, vegetation and unrelated distant structures rather than useful views of the Espace des Forges.
+Do not continue provider-by-provider street-image probing as the primary path for this building. Public/street imagery is optional enrichment and must pass an automatic viability gate before preview/original download.
 
-Decision for this reference building: **Panoramax is rejected as a reconstruction-image source**. The provider implementation remains useful as a generic survey provider and as evidence that target bearing/FOV geometry alone cannot establish line of sight or facade usefulness.
+## IMPLEMENTED_NOT_VALIDATED — building roof-plane core
 
-Do not spend more time extracting Panoramax full-resolution imagery for the Espace des Forges.
+Branch `feat/building-core-20260922` now contains the first building-centric reconstruction slice:
+- deterministic seeded RANSAC roof-plane fitting from LAS/LAZ XYZ;
+- least-squares refinement;
+- rejection of near-vertical/facade-like planes;
+- explicit EPSG/datum/origin/ground metadata;
+- per-plane support count, RMSE, area, slope, downslope aspect and convex support hull;
+- independent high-structure height counts;
+- deterministic JSON output;
+- local-metric diagnostic OBJ with Z up;
+- synthetic gabled-roof tests.
+
+This code is not HOST_VALIDATED on the real Espace des Forges LAZ yet. Do not present its real-building results as established until the exact branch SHA has been run locally and inspected.
 
 ## Local migration
 
@@ -114,17 +101,16 @@ Migration is complete:
 - active root is `E:\_Project\_ProjectPython\BatiForge`;
 - local LiDAR/workspaces were preserved under BatiForge;
 - local COLMAP 4.2.0 was preserved under BatiForge;
-- large local data/tools remain gitignored;
-- local `main` was verified synchronized and CLEAN after migration.
+- large local data/tools remain gitignored.
 
 ## NEXT
 
-1. Keep the validated Panoramax provider, but stop Panoramax acquisition for this building.
-2. Add KartaView as the next street-level provider: public nearby-photo API, metadata first, no bulk download.
-3. Visually verify whether KartaView has actual close facade coverage before selecting originals.
-4. If street-level coverage is still insufficient, survey Mapillary and Wikimedia/official municipal imagery with explicit per-source licensing/provenance.
-5. Use IGN aerial/orthophoto imagery for roof/planimetric evidence, not as a substitute for facade coverage.
-6. Only run controlled COLMAP when a useful overlapping facade image set exists.
-7. Align/fuse photogrammetry with metric LiDAR/RNB evidence.
+1. Host-validate the roof-plane core on the exact isolated Espace des Forges LAZ.
+2. Inspect plane count, coverage, RMSE, support area and slope distribution; tune only from measured evidence.
+3. Verify the diagnostic OBJ in Blender as local metric/Z-up geometry.
+4. Intersect accepted roof patches with the authoritative footprint rather than their unconstrained convex hulls.
+5. Derive eaves/walls and assemble a bounded clean shell.
+6. Preserve/model the compact high structure separately if the main roof segmentation does not capture it.
+7. Add orthophoto/top appearance only after metric geometry is stable.
 
-Active plan: `docs/exec-plans/active/0001-imagery-survey.md`.
+Active plan: `docs/exec-plans/active/0002-building-core.md`.
