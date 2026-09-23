@@ -65,6 +65,64 @@ class ContextGroundTests(unittest.TestCase):
         self.assertEqual(len(faces), 0)
         self.assertAlmostEqual(meta["grid"]["coverage_ratio"], 0.75)
 
+    def test_small_flat_hole_is_filled_from_measured_neighbors(self):
+        points = []
+        classes = []
+        for row in range(3):
+            for col in range(3):
+                if row == 1 and col == 1:
+                    continue
+                points.append((col + 0.5, row + 0.5, 100.0))
+                classes.append(2)
+
+        vertices, faces, meta = build_ground_grid(
+            np.asarray(points, dtype=np.float64),
+            np.asarray(classes, dtype=np.uint8),
+            crop=(0.0, 0.0, 3.0, 3.0),
+            origin_x=0.0,
+            origin_y=0.0,
+            ground_z=100.0,
+            cell_size_m=1.0,
+            fill_radius_cells=1,
+            fill_min_neighbors=4,
+            fill_min_directions=4,
+            fill_max_z_span_m=0.1,
+        )
+
+        self.assertEqual(meta["grid"]["measured_cell_count"], 8)
+        self.assertEqual(meta["grid"]["inferred_cell_count"], 1)
+        self.assertEqual(len(vertices), 9)
+        self.assertEqual(len(faces), 8)
+        self.assertAlmostEqual(meta["grid"]["coverage_ratio"], 1.0)
+
+    def test_fill_refuses_to_bridge_large_height_step(self):
+        points = np.asarray(
+            [
+                (0.5, 1.5, 100.0),
+                (1.5, 0.5, 100.0),
+                (2.5, 1.5, 102.0),
+                (1.5, 2.5, 102.0),
+            ],
+            dtype=np.float64,
+        )
+        classes = np.asarray([2, 2, 2, 2], dtype=np.uint8)
+        vertices, _faces, meta = build_ground_grid(
+            points,
+            classes,
+            crop=(0.0, 0.0, 3.0, 3.0),
+            origin_x=0.0,
+            origin_y=0.0,
+            ground_z=100.0,
+            cell_size_m=1.0,
+            fill_radius_cells=1,
+            fill_min_neighbors=4,
+            fill_min_directions=4,
+            fill_max_z_span_m=0.5,
+        )
+
+        self.assertEqual(meta["grid"]["inferred_cell_count"], 0)
+        self.assertEqual(len(vertices), 4)
+
     def test_bounds_overlap_ratio_is_crop_relative(self):
         crop = (0.0, 0.0, 10.0, 10.0)
         self.assertAlmostEqual(_bounds_overlap_ratio((0.0, 0.0, 10.0, 10.0), crop), 1.0)
