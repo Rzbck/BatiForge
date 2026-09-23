@@ -107,49 +107,43 @@ def _align_ring(previous: list[tuple[float, float]], current: list[tuple[float, 
     return [current[(i + best_shift) % n] for i in range(n)]
 
 
-def _section_records(
-    records: list[dict[str, Any]],
+def _make_section(
+    xyz: np.ndarray,
+    rows: np.ndarray,
     *,
-    slice_height_m: float,
-    min_slice_points: int,
+    source_kind: str,
+    source_id: int,
     min_section_area_m2: float,
     ring_vertices: int,
-) -> list[dict[str, Any]]:
-    if slice_height_m <= 0.0:
-        raise ValueError("slice_height_m must be > 0")
-    xyz = np.asarray(
-        [[float(r["x"]), float(r["y"]), float(r["z"])] for r in records],
-        dtype=np.float64,
-    )
-    if len(xyz) < min_slice_points:
-        return []
-    z0 = float(np.min(xyz[:, 2]))
-    bins = np.floor((xyz[:, 2] - z0) / slice_height_m).astype(np.int64)
-    sections: list[dict[str, Any]] = []
-    for bin_index in sorted(set(int(value) for value in bins.tolist())):
-        rows = np.flatnonzero(bins == bin_index)
-        if len(rows) < min_slice_points:
-            continue
-        hull = _convex_hull(xyz[rows, :2])
-        if len(hull) < 3:
-            continue
-        area = _polygon_area(hull)
-        if area < min_section_area_m2:
-            continue
-        ring = _resample_closed(hull, ring_vertices)
-        z = float(np.median(xyz[rows, 2]))
-        center_x = float(np.median(xyz[rows, 0]))
-        center_y = float(np.median(xyz[rows, 1]))
-        sections.append(
-            {
-                "source_bin": bin_index,
-                "point_count": int(len(rows)),
-                "z_m": round(z, 5),
-                "area_xy_m2": round(area, 4),
-                "center_xy_m": [round(center_x, 5), round(center_y, 5)],
-                "ring_xy": [[round(x, 5), round(y, 5)] for x, y in ring],
-            }
-        )
+) -> dict[str, Any] | None:
+    if len(rows) < 3:
+        return None
+    sample = xyz[rows]
+    hull = _convex_hull(sample[:, :2])
+    if len(hull) < 3:
+        return None
+    area = _polygon_area(hull)
+    if area < min_section_area_m2:
+        return None
+    ring = _resample_closed(hull, ring_vertices)
+    z_min = float(np.min(sample[:, 2]))
+    z_max = float(np.max(sample[:, 2]))
+    return {
+        "source_kind": source_kind,
+        "source_bin": int(source_id),
+        "point_count": int(len(rows)),
+        "z_m": round(float(np.median(sample[:, 2])), 5),
+        "z_span_m": round(z_max - z_min, 4),
+        "area_xy_m2": round(area, 4),
+        "center_xy_m": [
+            round(float(np.median(sample[:, 0])), 5),
+            round(float(np.median(sample[:, 1])), 5),
+        ],
+        "ring_xy": [[round(x, 5), round(y, 5)] for x, y in ring],
+    }
+
+
+def _align_sections(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
     sections.sort(key=lambda item: float(item["z_m"]))
     for index in range(1, len(sections)):
         previous = [(float(x), float(y)) for x, y in sections[index - 1]["ring_xy"]]
@@ -157,6 +151,123 @@ def _section_records(
         aligned = _align_ring(previous, current)
         sections[index]["ring_xy"] = [[round(x, 5), round(y, 5)] for x, y in aligned]
     return sections
+
+
+def _fixed_section_records(
+    xyz: np.ndarray,
+    *,
+    slice_height_m: float,
+    min_slice_points: int,
+    min_section_area_m2: float,
+    ring_vertices: int,
+) -> list[dict[str, Any]]:
+    z0 = float(np.min(xyz[:, 2]))
+    bins = np.floor((xyz[:, 2] - z0) / slice_height_m).astype(np.int64)
+    sections: list[dict[str, Any]] = []
+    for bin_index in sorted(set(int(value) for value in bins.tolist())):
+        rows = np.flatnonzero(bins == bin_index)
+        if len(rows) < min_slice_points:
+            continue
+        section = _make_section(
+            xyz,
+            rows,
+            source_kind="fixed_height_bin",
+            source_id=bin_index,
+            min_section_area_m2=min_section_area_m2,
+            ring_vertices=ring_vertices,
+        )
+        if section is not None:
+            sections.append(section)
+    return _align_sections(sections)
+
+
+def _adaptive_quantile_sections(
+    xyz: np.ndarray,
+    *,
+    min_slice_points: int,
+    min_section_area_m2: float,
+    ring_vertices: int,
+    target_section_count: int,
+    max_band_height_m: float,
+) -> list[dict[str, Any]]:
+    if target_section_count < 2:
+        return []
+    order = np.argsort(xyz[:, 2], kind="stable")
+    n = len(order)
+    section_count = min(target_section_count, max(2, n // min_slice_points))
+    if section_count < 2:
+        return []
+
+    edges = np.linspace(0, n, section_count + 1, dtype=int)
+    sections: list[dict[str, Any]] = []
+    for group_index in range(section_count):
+        rows = order[edges[group_index] : edges[group_index + 1]]
+        if len(rows) < min_slice_points:
+            continue
+        z_span = float(np.ptp(xyz[rows, 2]))
+        if z_span > max_band_height_m:
+            continue
+        section = _make_section(
+            xyz,
+            rows,
+            source_kind="adaptive_equal_support_band",
+            source_id=group_index,
+            min_section_area_m2=min_section_area_m2,
+            ring_vertices=ring_vertices,
+        )
+        if section is not None:
+            sections.append(section)
+
+    deduped: list[dict[str, Any]] = []
+    for section in sorted(sections, key=lambda item: float(item["z_m"])):
+        if deduped and abs(float(section["z_m"]) - float(deduped[-1]["z_m"])) < 0.20:
+            if int(section["point_count"]) > int(deduped[-1]["point_count"]):
+                deduped[-1] = section
+            continue
+        deduped.append(section)
+    return _align_sections(deduped)
+
+
+def _section_records(
+    records: list[dict[str, Any]],
+    *,
+    slice_height_m: float,
+    min_slice_points: int,
+    min_section_area_m2: float,
+    ring_vertices: int,
+    adaptive_target_sections: int,
+    adaptive_max_band_height_m: float,
+) -> tuple[list[dict[str, Any]], str, int]:
+    if slice_height_m <= 0.0:
+        raise ValueError("slice_height_m must be > 0")
+    if adaptive_max_band_height_m <= 0.0:
+        raise ValueError("adaptive_max_band_height_m must be > 0")
+    xyz = np.asarray(
+        [[float(r["x"]), float(r["y"]), float(r["z"])] for r in records],
+        dtype=np.float64,
+    )
+    if len(xyz) < min_slice_points * 2:
+        return [], "insufficient_total_points_for_two_sections", 0
+
+    fixed = _fixed_section_records(
+        xyz,
+        slice_height_m=slice_height_m,
+        min_slice_points=min_slice_points,
+        min_section_area_m2=min_section_area_m2,
+        ring_vertices=ring_vertices,
+    )
+    if len(fixed) >= 2:
+        return fixed, "fixed_height_bins", len(fixed)
+
+    adaptive = _adaptive_quantile_sections(
+        xyz,
+        min_slice_points=min_slice_points,
+        min_section_area_m2=min_section_area_m2,
+        ring_vertices=ring_vertices,
+        target_section_count=adaptive_target_sections,
+        max_band_height_m=adaptive_max_band_height_m,
+    )
+    return adaptive, "adaptive_equal_support_bands", len(fixed)
 
 
 def build_high_structure_mesh(
@@ -167,6 +278,8 @@ def build_high_structure_mesh(
     min_section_area_m2: float = 0.20,
     ring_vertices: int = 12,
     max_bridge_gap_m: float = 2.0,
+    adaptive_target_sections: int = 8,
+    adaptive_max_band_height_m: float = 4.0,
 ) -> dict[str, Any]:
     if min_slice_points < 3:
         raise ValueError("min_slice_points must be >= 3")
@@ -174,6 +287,8 @@ def build_high_structure_mesh(
         raise ValueError("ring_vertices must be >= 4")
     if max_bridge_gap_m <= 0.0:
         raise ValueError("max_bridge_gap_m must be > 0")
+    if adaptive_target_sections < 2:
+        raise ValueError("adaptive_target_sections must be >= 2")
 
     records = assembly.get("point_records", [])
     assemblies = assembly.get("assemblies", [])
@@ -188,15 +303,26 @@ def build_high_structure_mesh(
     for candidate in assemblies:
         assembly_id = int(candidate["assembly_id"])
         candidate_records = by_assembly.get(assembly_id, [])
-        sections = _section_records(
+        sections, section_mode, fixed_section_count = _section_records(
             candidate_records,
             slice_height_m=slice_height_m,
             min_slice_points=min_slice_points,
             min_section_area_m2=min_section_area_m2,
             ring_vertices=ring_vertices,
+            adaptive_target_sections=adaptive_target_sections,
+            adaptive_max_band_height_m=adaptive_max_band_height_m,
         )
         if len(sections) < 2:
-            skipped.append({"assembly_id": assembly_id, "reason": "insufficient_supported_sections"})
+            skipped.append(
+                {
+                    "assembly_id": assembly_id,
+                    "reason": "insufficient_supported_sections",
+                    "point_count": len(candidate_records),
+                    "section_mode": section_mode,
+                    "fixed_section_count": fixed_section_count,
+                    "final_section_count": len(sections),
+                }
+            )
             continue
         gaps = [
             float(sections[index + 1]["z_m"]) - float(sections[index]["z_m"])
@@ -207,6 +333,10 @@ def build_high_structure_mesh(
                 {
                     "assembly_id": assembly_id,
                     "reason": "vertical_section_gap_too_large",
+                    "point_count": len(candidate_records),
+                    "section_mode": section_mode,
+                    "fixed_section_count": fixed_section_count,
+                    "final_section_count": len(sections),
                     "max_section_gap_m": round(max(gaps), 4),
                 }
             )
@@ -216,6 +346,8 @@ def build_high_structure_mesh(
                 "assembly_id": assembly_id,
                 "point_count": int(candidate.get("point_count", len(candidate_records))),
                 "section_count": len(sections),
+                "section_mode": section_mode,
+                "fixed_section_count_before_fallback": fixed_section_count,
                 "ring_vertices": ring_vertices,
                 "max_section_gap_m": round(max(gaps) if gaps else 0.0, 4),
                 "bridged_evidence_gap": bool(gaps and max(gaps) > slice_height_m * 1.35),
@@ -224,8 +356,8 @@ def build_high_structure_mesh(
         )
 
     return {
-        "schema_version": 1,
-        "method": "adaptive horizontal-section convex-hull loft from assembled LiDAR evidence",
+        "schema_version": 2,
+        "method": "fixed-height LiDAR sections with equal-support adaptive fallback loft",
         "georeference": assembly.get("georeference", {}),
         "parameters": {
             "slice_height_m": slice_height_m,
@@ -233,6 +365,8 @@ def build_high_structure_mesh(
             "min_section_area_m2": min_section_area_m2,
             "ring_vertices": ring_vertices,
             "max_bridge_gap_m": max_bridge_gap_m,
+            "adaptive_target_sections": adaptive_target_sections,
+            "adaptive_max_band_height_m": adaptive_max_band_height_m,
         },
         "assembly_count": len(assemblies),
         "mesh_count": len(meshes),
@@ -241,8 +375,10 @@ def build_high_structure_mesh(
         "skipped": skipped,
         "production_claim": False,
         "notes": [
+            "Fixed metric height slices remain the first choice.",
+            "If fixed slices are under-supported, equal-support Z bands are derived only from observed LiDAR points.",
+            "Adaptive bands are rejected when their internal vertical span is too large.",
             "Geometry is an evidence envelope, not a semantic chimney/steeple classification.",
-            "Section gaps are bridged only below the configured maximum and remain reported.",
             "No boolean union with the main shell is claimed at this stage.",
         ],
     }
@@ -308,7 +444,7 @@ def write_composite_obj(path: Path, shell: dict[str, Any], result: dict[str, Any
         "# BatiForge composite shell + LiDAR high-structure evidence preview",
         "# X east / Y north / Z up",
         "# shell floor uses ear-clipped triangles; no first-vertex fan",
-        "# high structure is an adaptive section loft; not yet boolean-unioned",
+        "# high structure is an observed-section loft; not yet boolean-unioned",
         "s off",
         f"# horizontal_crs={geo.get('horizontal_crs')}",
         f"# vertical_datum={geo.get('vertical_datum')}",
@@ -337,7 +473,7 @@ def write_high_structure_obj(path: Path, result: dict[str, Any]) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Build an adaptive LiDAR evidence loft for assembled high structures and optionally a composite shell preview."
+        description="Build a LiDAR evidence loft for assembled high structures and optionally a composite shell preview."
     )
     parser.add_argument("--assembly-json", type=Path, required=True)
     parser.add_argument("--shell-json", type=Path)
@@ -349,6 +485,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-section-area-m2", type=float, default=0.20)
     parser.add_argument("--ring-vertices", type=int, default=12)
     parser.add_argument("--max-bridge-gap-m", type=float, default=2.0)
+    parser.add_argument("--adaptive-target-sections", type=int, default=8)
+    parser.add_argument("--adaptive-max-band-height-m", type=float, default=4.0)
     return parser
 
 
@@ -363,6 +501,8 @@ def main(argv: list[str] | None = None) -> int:
             min_section_area_m2=args.min_section_area_m2,
             ring_vertices=args.ring_vertices,
             max_bridge_gap_m=args.max_bridge_gap_m,
+            adaptive_target_sections=args.adaptive_target_sections,
+            adaptive_max_band_height_m=args.adaptive_max_band_height_m,
         )
         shell = _load_json(args.shell_json) if args.shell_json else None
         if args.output_composite_obj and shell is None:
@@ -389,8 +529,14 @@ def main(argv: list[str] | None = None) -> int:
         sections = mesh["sections"]
         print(
             f"  #{mesh['assembly_id']}: points={mesh['point_count']} sections={mesh['section_count']} "
+            f"mode={mesh['section_mode']} "
             f"z={sections[0]['z_m']:.2f}..{sections[-1]['z_m']:.2f}m "
             f"max_gap={mesh['max_section_gap_m']:.2f}m"
+        )
+    for item in result["skipped"]:
+        print(
+            f"  skipped #{item['assembly_id']}: reason={item['reason']} "
+            f"mode={item.get('section_mode')} sections={item.get('final_section_count')}"
         )
     print(f"json: {args.output_json}")
     print(f"obj: {args.output_obj}")
