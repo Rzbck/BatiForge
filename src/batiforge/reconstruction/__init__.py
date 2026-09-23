@@ -1,5 +1,6 @@
-"""Building reconstruction primitives."""
+"""Building reconstruction primitives.
 
-from .roof_planes import RoofAnalysis, RoofPlane, analyze_roof_planes
-
-__all__ = ["RoofAnalysis", "RoofPlane", "analyze_roof_planes"]
+Submodules are intentionally not imported eagerly so command-line execution such
+as ``python -m batiforge.reconstruction.roof_planes`` does not preload the target
+module through the package initializer.
+"""
