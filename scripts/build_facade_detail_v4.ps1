@@ -69,6 +69,7 @@ Write-Host "Gate                   : STOP si la structure minimale n'est pas ret
 Write-Host "`n===== 1. RECONSTRUCTION PROJECTIVE =====" -ForegroundColor Cyan
 & $Uv run `
     --with "torch>=2.8,<3" `
+    --with "torchvision>=0.23,<1" `
     --with "transformers>=4.56,<6" `
     --with "pillow>=11,<13" `
     --with "opencv-python-headless>=4.10,<5" `
