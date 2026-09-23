@@ -20,7 +20,7 @@ Default branch: `main`
 Current active work:
 - issue `#7` — Implement building-centric reconstruction core;
 - branch `feat/building-core-20260922`;
-- PR `#8` — roof-plane core + authoritative footprint + support-aware topology + conservative analytic roof vectors;
+- PR `#8` — roof-plane core + authoritative footprint + support-aware topology + analytic roof vectors + first vector roof regions;
 - active plan `docs/exec-plans/active/0002-building-core.md`.
 
 Imagery survey core was merged to `main` through PR `#5` at merge commit `9d7261c219c76aaa4cabd3db7e41e58c33919a63`.
@@ -70,7 +70,7 @@ A 0.25 m regular-grid LiDAR proxy OBJ was generated and inspected in Blender. It
 
 Do not use that OBJ as final architectural geometry. The isolated raw LiDAR is stronger evidence.
 
-The source mesh is Z-up. Future Blender imports must explicitly preserve intended axes rather than relying on importer defaults.
+Source reconstruction coordinates are X east / Y north / Z up. OBJ does not carry authoritative axis metadata, so Blender OBJ import defaults can rotate an otherwise correct model. Preserve the georeferenced frame in core outputs; use explicit importer axes or the Blender-friendly PLY diagnostic for inspection.
 
 ## HOST_VALIDATED — imagery survey core
 
@@ -155,20 +155,42 @@ Key measured adjacencies:
 
 One point is reported outside the footprint in the topology pass although the authoritative alignment audit reported 19,404/19,404 inside. This is a boundary-classification/serialized-coordinate edge case and does not materially affect the roof support result; keep it visible until boundary semantics are unified.
 
-## IMPLEMENTED_NOT_VALIDATED — conservative analytic roof vectors
+## HOST_VALIDATED — conservative analytic roof vectors
 
-Current branch adds `batiforge.reconstruction.roof_vectors`.
+Exact host-validated code SHA: `8d7b1bf1c0c73701b2e6ad3c115e2958a570df31`.
 
-It does not generate roof faces yet. It:
-- promotes only measured `continuous_intersection_candidate` relationships;
-- rejects short support by default (<1 m);
-- derives the exact analytic equality line from the fitted plane equations rather than tracing grid edges;
-- uses measured topology boundary segments only to bound the supported extent;
-- clips the resulting vector segment to the authoritative footprint;
-- keeps height-step/overlap relationships separate;
-- emits deterministic JSON plus a line-only local-metric OBJ skeleton.
+Real topology/roof/footprint validation:
+- 23 unit tests PASS;
+- 5 continuous candidates detected;
+- 4 analytic vectors accepted and 1 short continuous relationship rejected;
+- accepted: P1↔P2, P1↔P6, P2↔P5, P4↔P7;
+- P1↔P2 vector length 21.30 m from ~24.0 m measured support;
+- P1↔P6 vector length 6.00 m;
+- P2↔P5 vector length 7.19 m;
+- P4↔P7 vector length 2.35 m;
+- P5↔P6 remains rejected by the default minimum-support-length gate;
+- three height-step/overlap relationships remain separate: P1↔P4, P1↔P7, P2↔P3;
+- compact high structure remains separate: 306 points >=22 m;
+- Git remained CLEAN.
 
-This is the bridge from diagnostic topology to vector roof geometry. Host validation on the real topology JSON is required before roof-region faces are constructed.
+Human Blender inspection confirmed that the vector skeleton is coherent but intentionally incomplete because it contains only validated intersection/step evidence and no roof faces yet. The footprint lies in the XY plane and roof vectors carry Z height. Apparent OBJ orientation issues are importer-axis behavior; the core frame stays X east / Y north / Z up.
+
+## IMPLEMENTED_NOT_VALIDATED — support-resolved vector roof regions
+
+Current branch adds `batiforge.reconstruction.roof_regions`.
+
+It creates the first actual roof faces while remaining conservative:
+- authoritative footprint remains the outer planimetric constraint;
+- accepted continuous relationships are used as exact analytic divider lines;
+- measured height-step boundaries are straightened by PCA into vector divider lines rather than traced as staircase grid edges;
+- footprint triangulation is only an internal partition aid, not the visible roof topology;
+- each resulting vector polygon is assigned to a fitted plane only when real LiDAR support inside that polygon passes point-count and purity gates;
+- unresolved pieces remain explicit instead of being silently filled;
+- vertices are lifted exactly onto the assigned fitted plane;
+- outputs include JSON, source-frame OBJ, and a Blender-friendly PLY preserving stored XYZ coordinates directly;
+- the >=22 m compact high structure remains excluded from the main roof face pass.
+
+This stage must now be host-validated on the real Espace des Forges evidence before walls or shell closure.
 
 ## Local migration
 
@@ -181,12 +203,12 @@ Migration is complete:
 
 ## NEXT
 
-1. Host-validate the conservative analytic roof vectors on the exact topology/roof/footprint outputs.
-2. Confirm that strong continuous relationships produce vector segments with lengths/locations consistent with their measured support and that height-step candidates are not promoted.
-3. Inspect the vector skeleton together with the footprint and roof-plane diagnostics in Blender if needed.
-4. Use validated vector edges + authoritative footprint to construct roof regions without staircase geometry.
-5. Derive eaves/walls and assemble a bounded clean shell.
-6. Preserve/model the compact high structure separately from the main roof.
+1. Host-validate `roof_regions` on the exact real LiDAR + roof + footprint + topology + vector outputs.
+2. Inspect resolved footprint-area ratio, unresolved pieces, per-plane area and the PLY roof faces in Blender.
+3. Do not fill unresolved areas unless supported by continuity/topology evidence.
+4. Add explicit vertical step faces and eaves/walls only after the roof-region assignment is credible.
+5. Model the compact high structure separately from the main roof.
+6. Assemble and validate a bounded clean shell.
 7. Add orthophoto/top appearance only after metric geometry is stable.
 
 Active plan: `docs/exec-plans/active/0002-building-core.md`.
