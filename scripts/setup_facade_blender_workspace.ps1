@@ -79,6 +79,7 @@ BATIFORGE - FACADE WEB EVIDENCE
 Le workflow de reference est web-only / gratuit.
 
 - Les sources web originales et leur provenance restent sous evidence\web_original.
+- Les derives locaux (rendus de pages PDF, detections, masques) restent sous evidence\derived.
 - Ne jamais ecraser le squelette metrique LiDAR/RNB avec une inference image non enregistree.
 - Les images servent d'abord a detecter portes, fenetres, baies, vitraux et retraits.
 - Les ouvertures ne deviennent de la geometrie qu'apres registration sur un plan de facade connu.
@@ -88,7 +89,7 @@ Le workflow de reference est web-only / gratuit.
 Aucune capture terrain par l'utilisateur n'est requise pour ce workflow.
 '@ | Set-Content -LiteralPath $Guide -Encoding utf8
 
-$EvidenceImages = @(Get-ChildItem -LiteralPath $WebRoot -Recurse -File -ErrorAction SilentlyContinue |
+$EvidenceImages = @(Get-ChildItem -LiteralPath $EvidenceRoot -Recurse -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Extension.ToLowerInvariant() -in @('.jpg','.jpeg','.png','.tif','.tiff','.webp') })
 
 Write-Host "`n===== BATIFORGE FACADE WEB + BLENDER =====" -ForegroundColor Cyan
@@ -96,15 +97,15 @@ Write-Host "Workspace : $Workspace"
 Write-Host "Blender   : $BlenderExe"
 Write-Host "Building  : $BuildingObj"
 Write-Host "Terrain   : $TerrainObj"
-Write-Host "Evidence  : $($EvidenceImages.Count) web image(s)"
-Write-Host "Web dir   : $WebRoot"
+Write-Host "Evidence  : $($EvidenceImages.Count) image(s) web/derived"
+Write-Host "Evidence dir:" $EvidenceRoot
 
 Remove-Item $Blend,$Render,$Manifest -Force -ErrorAction SilentlyContinue
 
 & $BlenderExe --background --factory-startup --python $BlenderScript -- `
     --building $BuildingObj `
     --terrain $TerrainObj `
-    --evidence-dir $WebRoot `
+    --evidence-dir $EvidenceRoot `
     --output-blend $Blend `
     --output-render $Render `
     --output-manifest $Manifest
@@ -116,18 +117,18 @@ foreach ($Path in @($Blend,$Render,$Manifest,$Guide)) {
 
 $M = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
 Write-Host "`n===== RESULTAT =====" -ForegroundColor Green
-Write-Host "Evidence web images:" $M.facade_evidence_photo_count
-Write-Host "BBOX local         :" (($M.bbox_local.min -join ', ') + " -> " + ($M.bbox_local.max -join ', '))
-Write-Host "Blend              :" $Blend
-Write-Host "Preview PNG        :" $Render
-Write-Host "Evidence web       :" $WebRoot
-Write-Host "Guide              :" $Guide
+Write-Host "Evidence images :" $M.facade_evidence_photo_count
+Write-Host "BBOX local      :" (($M.bbox_local.min -join ', ') + " -> " + ($M.bbox_local.max -join ', '))
+Write-Host "Blend           :" $Blend
+Write-Host "Preview PNG     :" $Render
+Write-Host "Evidence        :" $EvidenceRoot
+Write-Host "Guide           :" $Guide
 
 if (git status --porcelain) {
     git status --short
     throw "Worktree non CLEAN."
 }
-Write-Host "Status             : CLEAN" -ForegroundColor Green
+Write-Host "Status          : CLEAN" -ForegroundColor Green
 
 Start-Process -FilePath $BlenderExe -ArgumentList @($Blend)
 Start-Process explorer.exe "/select,$Render"
