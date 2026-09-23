@@ -12,8 +12,7 @@ import requests
 
 DEFAULT_WFS_URL = "https://data.geopf.fr/wfs/ows"
 DEFAULT_LAYERS = (
-    "IGNF_NUAGES-DE-POINTS-LIDAR-HD:dalle",
-    "IGNF_NUAGES-DE-POINTS-LIDAR-HD:dalles",
+    "IGNF_LIDAR-HD_METADONNEE:metadata",
 )
 
 
@@ -40,11 +39,22 @@ def crop_from_footprint(footprint: dict[str, Any], margin_m: float) -> tuple[flo
 
 
 def _download_url_from_properties(properties: dict[str, Any]) -> str | None:
-    preferred_keys = ("url", "download_url", "href", "lien", "link")
+    # Since September 2026 the unified IGN LiDAR-HD WFS metadata layer
+    # exposes the classified point-cloud URL in `url_npl`.
+    preferred_keys = (
+        "url_npl",
+        "url",
+        "download_url",
+        "href",
+        "lien",
+        "link",
+    )
     for key in preferred_keys:
         value = properties.get(key)
         if isinstance(value, str) and value.startswith(("https://", "http://")):
-            return value
+            lower = value.lower()
+            if key == "url_npl" or ".laz" in lower or "copc" in lower:
+                return value
     for value in properties.values():
         if not isinstance(value, str):
             continue
@@ -55,7 +65,7 @@ def _download_url_from_properties(properties: dict[str, Any]) -> str | None:
 
 
 def _resource_name(properties: dict[str, Any], url: str) -> str:
-    for key in ("name_download", "filename", "name", "nom"):
+    for key in ("name_download", "filename", "name", "nom", "nom_dalle"):
         value = properties.get(key)
         if isinstance(value, str) and value.strip():
             name = value.strip()
@@ -122,7 +132,7 @@ def query_wfs_tiles(
             for resource in resources:
                 unique.setdefault(resource.url, resource)
             return sorted(unique.values(), key=lambda item: item.name)
-        errors.append(f"{layer}: {len(features)} features but no downloadable URL")
+        errors.append(f"{layer}: {len(features)} features but no downloadable point-cloud URL")
 
     raise RuntimeError("No downloadable LiDAR tiles found. " + " | ".join(errors))
 
@@ -179,8 +189,8 @@ def fetch_context_tiles(
     resources = query_wfs_tiles(crop, wfs_url=wfs_url)
     results = [download_tile(resource, output_dir / resource.name) for resource in resources]
     return {
-        "schema_version": 1,
-        "source": "IGN Geoplateforme WFS LiDAR HD tile index",
+        "schema_version": 2,
+        "source": "IGN Geoplateforme WFS unified LiDAR-HD metadata layer",
         "wfs_url": wfs_url,
         "layers_tried": list(DEFAULT_LAYERS),
         "footprint_json": str(footprint_json),
