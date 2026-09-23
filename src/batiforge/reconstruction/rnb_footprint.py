@@ -12,7 +12,9 @@ import requests
 from pyproj import Transformer
 
 
-RNB_BUILDING_URL = "https://rnb-api.beta.gouv.fr/api/alpha/buildings/{rnb_id}/"
+RNB_OGC_ITEM_URL = (
+    "https://rnb-api.beta.gouv.fr/api/alpha/ogc/collections/buildings/items/{rnb_id}"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +147,7 @@ def project_geojson_footprint(
 
     return ProjectedFootprint(
         rnb_id=rnb_id,
-        source_url=source_url or RNB_BUILDING_URL.format(rnb_id=rnb_id),
+        source_url=source_url or RNB_OGC_ITEM_URL.format(rnb_id=rnb_id),
         source_crs="EPSG:4326",
         target_crs=target_crs,
         origin_x=float(origin_x),
@@ -162,10 +164,18 @@ def fetch_rnb_footprint(
     target_crs: str = "EPSG:2154",
     timeout_s: float = 30.0,
 ) -> ProjectedFootprint:
-    url = RNB_BUILDING_URL.format(rnb_id=rnb_id)
+    """Fetch one authoritative RNB building as a GeoJSON Feature.
+
+    Use the documented OGC API - Features item endpoint directly. The legacy
+    ``/buildings/{id}/?format=geojson`` route still advertises an
+    ``application/json`` response and can reject ``Accept: application/geo+json``
+    with HTTP 406. The OGC item endpoint explicitly serves GeoJSON and avoids
+    that content-negotiation ambiguity.
+    """
+
+    url = RNB_OGC_ITEM_URL.format(rnb_id=rnb_id)
     response = requests.get(
         url,
-        params={"format": "geojson"},
         headers={"Accept": "application/geo+json", "User-Agent": "BatiForge/0.1"},
         timeout=timeout_s,
     )
