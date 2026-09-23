@@ -10,9 +10,10 @@
       "asset_url": "https://theatredescollines.annecy.fr/wp-content/uploads/2025/03/Fiche_technique_Forges_2025.pdf",
       "filename": "tdc-fiche-technique-forges-2025.pdf",
       "download": true,
+      "extract_pages": [5, 6],
       "rights": "Official public technical document from Theatre des collines / Ville d'Annecy; no redistribution license asserted by BatiForge. Keep downloaded copy workspace-local and use as reference evidence only.",
       "geometry_usage": "reference_only",
-      "notes": "Contains annex photos and a plan; useful for architectural evidence but not sufficient alone for metric facade openings."
+      "notes": "Page 5 contains annex photos and page 6 contains the plan. Render those pages workspace-locally as architectural evidence."
     },
     {
       "id": "vellut-walk-2021",
