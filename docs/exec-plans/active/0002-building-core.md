@@ -18,6 +18,7 @@ Reference building: Espace des Forges / Théâtre des collines, RNB `1A6BNQQ3VXG
 - LiDAR/raw/derived heavy assets remain outside Git.
 - Every host validation is tied to an exact code SHA.
 - The compact high structure is preserved as independent evidence until explicitly modelled.
+- Core reconstruction coordinates stay X east / Y north / Z up; presentation-axis transforms must not corrupt georeferencing.
 
 ## Milestone A — roof-surface evidence
 
@@ -47,67 +48,63 @@ HOST_VALIDATED on exact SHA `748a624a955108641add2cc91c5c41b22cdd9ebb`:
 
 The 100% containment validates consistency of the already isolated building cloud with the authoritative footprint. It does not remove the need to filter arbitrary raw LiDAR against that footprint.
 
-## Milestone C — topology-constrained roof evidence
+## Milestone C1 — support-aware topology evidence
 
 HOST_VALIDATED on exact SHA `7fea565a578f0b8601327fe38f46c430c2f1bb1f`:
-- re-evaluate point support against the fitted roof-plane equations inside the authoritative footprint;
-- exclude the >=22 m compact high structure from the main-roof topology pass;
-- use a metric occupancy grid only to measure local support, never as final mesh geometry;
-- label cells only when point count and purity gates pass;
-- preserve sparse, mixed-support and residual-unassigned cells explicitly;
-- measure plane-to-plane adjacency boundaries;
-- compute median/p95 plane height gaps at observed boundaries;
-- compare observed boundaries with the analytic plane-equality line;
-- classify continuous intersection candidates separately from height-step/overlap candidates;
-- output deterministic JSON plus a line-only diagnostic OBJ.
-
-Reference-case validation:
-- 19 unit tests PASS;
-- 18,964 main-roof candidates after excluding >=22 m high structure;
-- 17,794 assigned; ratio 0.938304;
-- 1,518 / 1,710 observed support cells resolved; ratio 0.887719;
-- unresolved: 42 sparse, 115 mixed-support, 35 no compatible plane;
-- 306 high-structure points preserved separately;
-- 8 measured plane adjacencies;
-- P1↔P2 is the dominant continuous intersection candidate (~24 m, 0.13 m median gap, 0.09 m equality-line distance);
-- P2↔P5, P1↔P6 and P4↔P7 are shorter continuous candidates;
-- P5↔P6 is only ~0.5 m and should not be promoted by default;
-- P1↔P4, P2↔P3 and P1↔P7 are height-step/overlap candidates with ~4.9–5.5 m height gaps;
+- 18,964 main-roof candidates after excluding >=22 m compact high structure;
+- 17,794 assigned, ratio 0.938304;
+- 1,518 / 1,710 support cells resolved, ratio 0.887719;
+- unresolved cells remain explicit;
+- 8 measured adjacencies;
+- continuous candidates identified separately from ~4.9–5.5 m height-step/overlap boundaries;
 - Git remained CLEAN.
 
-One boundary-classification edge case reports 19,403 points inside during the topology pass while the authoritative footprint audit reports 19,404/19,404. Keep this discrepancy visible until boundary semantics are unified; it does not materially affect the topology metrics.
+## Milestone C2 — conservative analytic roof vectors
 
-## Milestone D — conservative analytic roof vectors
+HOST_VALIDATED on exact SHA `8d7b1bf1c0c73701b2e6ad3c115e2958a570df31`:
+- 23 unit tests PASS;
+- 5 continuous candidates detected, 4 promoted and 1 short candidate rejected;
+- accepted vectors: P1↔P2, P1↔P6, P2↔P5, P4↔P7;
+- P1↔P2 vector length 21.30 m;
+- P1↔P6 6.00 m;
+- P2↔P5 7.19 m;
+- P4↔P7 2.35 m;
+- P5↔P6 rejected by minimum support length;
+- P1↔P4, P1↔P7 and P2↔P3 remain explicit height-step/overlap candidates;
+- 306 >=22 m high-structure points preserved separately;
+- Git remained CLEAN.
+
+Blender inspection confirmed a coherent but intentionally incomplete vector skeleton. OBJ importer defaults may remap axes; source data remains X east / Y north / Z up.
+
+## Milestone C3 — support-resolved vector roof regions
 
 IMPLEMENTED_NOT_VALIDATED on the active branch:
-- promote only measured `continuous_intersection_candidate` relationships;
-- default minimum measured boundary support: 1.0 m;
-- derive exact roof-vector geometry from the analytic equality line of each fitted plane pair;
-- use occupancy-grid boundary segments only to bound the supported span, never as final geometry;
-- add a conservative support margin before clipping;
-- clip vector segments to the authoritative footprint;
-- preserve height-step/overlap relationships separately;
-- emit deterministic JSON and line-only local-metric OBJ skeleton;
-- synthetic tests cover equality-line vectorization, authoritative footprint clipping, short-support rejection and no-face OBJ output.
+- use the authoritative footprint as the outer constraint;
+- use validated continuous equality lines as exact analytic dividers;
+- fit straight PCA divider lines to measured height-step boundary evidence instead of tracing grid staircases;
+- triangulate the footprint only internally to robustly partition concave geometry;
+- assign each resulting vector polygon to a fitted roof plane only when real LiDAR support inside it passes count/purity gates;
+- leave unsupported or mixed polygons unresolved;
+- lift region vertices exactly onto the assigned fitted plane;
+- emit deterministic JSON, source-frame OBJ, and Blender-friendly PLY roof faces;
+- keep the >=22 m high structure separate.
 
 Acceptance for the reference case:
-- exact branch SHA host validation on the already validated roof/topology/footprint JSON outputs;
-- dominant P1↔P2 vector survives and remains close to the measured ~24 m support;
-- P2↔P5, P1↔P6 and P4↔P7 are evaluated conservatively;
-- the ~0.5 m P5↔P6 relation is rejected by the default 1.0 m support gate;
-- height-step pairs are not promoted to ridge vectors;
-- all vector endpoints remain inside/on the authoritative footprint;
+- exact branch SHA host validation on the real LiDAR + validated roof/footprint/topology/vector outputs;
+- high resolved footprint-area ratio without silently filling unsupported pieces;
+- per-plane area distribution coherent with measured support;
+- PLY roof faces visually coherent in Blender and not staircase/grid geometry;
+- no accidental absorption of the compact high structure;
 - Git remains CLEAN.
 
-Only after these vector gates pass should roof-region faces be constructed.
+## Milestone D — bounded shell
 
-## Milestone E — bounded shell
-
-- use validated vector edges + authoritative footprint to construct vector roof regions;
-- derive eaves/walls from footprint + validated roof topology;
+NEXT after roof-region validation:
+- derive explicit vertical step faces where validated height-step regions meet;
+- derive eaves/walls from footprint + validated roof regions;
+- model the compact high structure separately;
 - assemble a clean bounded shell;
 - verify manifold/boundary status explicitly;
-- keep the compact high structure as separate geometry until supported by its own segmentation;
 - export local and georeferenced metadata together.
 
 ## Later enrichment
