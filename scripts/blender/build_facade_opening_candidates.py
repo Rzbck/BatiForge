@@ -45,6 +45,30 @@ def remove_collection(name: str) -> None:
     bpy.data.collections.remove(collection)
 
 
+def collection_bbox_center(name: str) -> Vector:
+    collection = bpy.data.collections.get(name)
+    if collection is None:
+        return Vector((0.0, 0.0, 0.0))
+    points: list[Vector] = []
+    for obj in collection.all_objects:
+        if obj.type != "MESH":
+            continue
+        points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not points:
+        return Vector((0.0, 0.0, 0.0))
+    lo = Vector((min(p.x for p in points), min(p.y for p in points), min(p.z for p in points)))
+    hi = Vector((max(p.x for p in points), max(p.y for p in points), max(p.z for p in points)))
+    return (lo + hi) * 0.5
+
+
+def exterior_normal(wall_center: Vector, normal_xy: tuple[float, float], building_center: Vector) -> tuple[float, float]:
+    nx, ny = normal_xy
+    outward = Vector((wall_center.x - building_center.x, wall_center.y - building_center.y, 0.0))
+    if outward.length > 1e-9 and outward.dot(Vector((nx, ny, 0.0))) < 0.0:
+        nx, ny = -nx, -ny
+    return nx, ny
+
+
 def add_candidate_panel(
     collection: bpy.types.Collection,
     opening: dict,
@@ -56,7 +80,7 @@ def add_candidate_panel(
     nx, ny = normal_xy
     ux, uy = u_axis_xy
     center = Vector(opening["center_xyz"])
-    center += Vector((nx, ny, 0.0)) * 0.10
+    center += Vector((nx, ny, 0.0)) * 0.12
 
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=center)
     obj = bpy.context.object
@@ -117,8 +141,12 @@ def main() -> None:
     balcony_mat = material("MAT_Candidate_Balcony", (0.8, 0.1, 0.95, 1.0), 0.15)
     mats = {"window": window_mat, "door": door_mat, "balcony": balcony_mat}
 
-    normal_xy = tuple(float(v) for v in wall["normal_xy"])
+    wall_center = Vector(wall["centroid_xyz"])
+    building_center = collection_bbox_center("02_BUILDING_CORE")
+    raw_normal = tuple(float(v) for v in wall["normal_xy"])
+    normal_xy = exterior_normal(wall_center, raw_normal, building_center)
     u_axis_xy = tuple(float(v) for v in wall["u_axis_xy"])
+
     for i, opening in enumerate(mapping.get("openings", []), start=1):
         add_candidate_panel(
             collection,
@@ -135,6 +163,7 @@ def main() -> None:
     label["aspect_score"] = float(mapping["aspect_score"])
     label["status"] = "EXPERIMENTAL_NOT_METRICALLY_ACCEPTED"
     label["source_image"] = data["source_image"]
+    label["camera_side"] = "building_exterior"
 
     camera = bpy.data.objects.get("BatiForge_Camera")
     if camera is None or camera.type != "CAMERA":
@@ -143,15 +172,16 @@ def main() -> None:
         bpy.context.scene.collection.objects.link(camera)
         bpy.context.scene.camera = camera
 
-    wall_center = Vector(wall["centroid_xyz"])
     nx, ny = normal_xy
     width = float(wall["width_m"])
     height = float(wall["height_m"])
-    distance = max(width, height) * 1.8 + 6.0
-    camera.location = wall_center + Vector((nx, ny, 0.0)) * distance + Vector((0.0, 0.0, height * 0.08))
-    point_camera_at(camera, wall_center)
-    camera.data.type = "ORTHO"
-    camera.data.ortho_scale = max(width * 1.25, height * 1.35, 4.0)
+    distance = max(width, height) * 1.45 + 8.0
+    target = wall_center
+    camera.location = target + Vector((nx, ny, 0.0)) * distance + Vector((0.0, 0.0, max(1.2, height * 0.10)))
+    point_camera_at(camera, target)
+    camera.data.type = "PERSP"
+    camera.data.lens = 58.0
+    camera.data.sensor_width = 36.0
     camera.data.clip_start = 0.05
     camera.data.clip_end = 5000.0
     bpy.context.scene.camera = camera
@@ -165,6 +195,7 @@ def main() -> None:
     scene["batiforge_facade_candidate_id"] = mapping["candidate_id"]
     scene["batiforge_facade_candidate_index"] = candidate_index
     scene["batiforge_facade_candidate_status"] = "EXPERIMENTAL_NOT_METRICALLY_ACCEPTED"
+    scene["batiforge_facade_camera_side"] = "building_exterior"
 
     args.output_blend.parent.mkdir(parents=True, exist_ok=True)
     args.output_render.parent.mkdir(parents=True, exist_ok=True)
@@ -172,6 +203,7 @@ def main() -> None:
     bpy.ops.render.render(write_still=True)
     print(f"candidate: {mapping['candidate_id']}")
     print(f"opening panels: {len(mapping.get('openings', []))}")
+    print(f"camera side: building exterior")
     print(f"blend: {args.output_blend}")
     print(f"render: {args.output_render}")
 
