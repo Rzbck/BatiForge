@@ -3,13 +3,35 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
+from urllib.parse import urljoin
 
 import requests
 
 
 _ALLOWED_KINDS = {"image", "pdf", "page"}
+
+
+class _ImageAssetParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.assets: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        data = {key.lower(): value for key, value in attrs if value is not None}
+        if tag.lower() == "img":
+            for key in ("src", "data-src", "data-lazy-src"):
+                value = data.get(key)
+                if value:
+                    self.assets.append(value)
+        if tag.lower() == "meta":
+            prop = (data.get("property") or data.get("name") or "").lower()
+            if prop in {"og:image", "twitter:image", "twitter:image:src"}:
+                value = data.get("content")
+                if value:
+                    self.assets.append(value)
 
 
 def _safe_name(value: str) -> str:
@@ -55,8 +77,34 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
             raise ValueError(f"source {source_id} must record rights/provenance")
 
 
+def discover_page_image_assets(html: str, page_url: str) -> list[str]:
+    parser = _ImageAssetParser()
+    parser.feed(html)
+    seen: set[str] = set()
+    result: list[str] = []
+    for candidate in parser.assets:
+        absolute = urljoin(page_url, candidate)
+        if not absolute.startswith(("https://", "http://")):
+            continue
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+        result.append(absolute)
+    return result
+
+
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _get(url: str, *, timeout_s: float) -> requests.Response:
+    response = requests.get(
+        url,
+        timeout=timeout_s,
+        headers={"User-Agent": "BatiForge/0.1 facade-evidence"},
+    )
+    response.raise_for_status()
+    return response
 
 
 def fetch_manifest(
@@ -74,13 +122,23 @@ def fetch_manifest(
     for item in manifest["sources"]:
         record = dict(item)
         record["status"] = "catalogued"
-        if item.get("download", False):
-            response = requests.get(
-                item["asset_url"],
-                timeout=timeout_s,
-                headers={"User-Agent": "BatiForge/0.1 facade-evidence"},
+
+        if item.get("discover_assets", False):
+            response = _get(item["page_url"], timeout_s=timeout_s)
+            content_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+            if not content_type.startswith("text/html"):
+                raise RuntimeError(
+                    f"source {item['id']} expected HTML for discovery, got {content_type or 'unknown'}"
+                )
+            record["asset_candidates"] = discover_page_image_assets(
+                response.text, response.url
             )
-            response.raise_for_status()
+            record["asset_candidate_count"] = len(record["asset_candidates"])
+            record["resolved_page_url"] = response.url
+            record["status"] = "discovered"
+
+        if item.get("download", False):
+            response = _get(item["asset_url"], timeout_s=timeout_s)
             payload = response.content
             if not payload:
                 raise RuntimeError(f"empty response for {item['id']}")
@@ -119,6 +177,9 @@ def fetch_manifest(
         "sources": resolved,
         "downloaded_count": sum(item["status"] == "downloaded" for item in resolved),
         "catalogued_count": len(resolved),
+        "discovered_asset_count": sum(
+            int(item.get("asset_candidate_count", 0)) for item in resolved
+        ),
     }
     output_manifest = output_dir / "web-evidence-resolved.json"
     output_manifest.write_text(
@@ -145,10 +206,18 @@ def main() -> None:
     )
     print(
         "facade web evidence: "
-        f"catalogued={result['catalogued_count']} downloaded={result['downloaded_count']}"
+        f"catalogued={result['catalogued_count']} "
+        f"downloaded={result['downloaded_count']} "
+        f"asset_candidates={result['discovered_asset_count']}"
     )
     for item in result["sources"]:
-        print(f"{item['id']}: {item['status']} {item.get('local_path', item['page_url'])}")
+        suffix = ""
+        if item.get("asset_candidate_count") is not None:
+            suffix = f" candidates={item['asset_candidate_count']}"
+        print(
+            f"{item['id']}: {item['status']} "
+            f"{item.get('local_path', item['page_url'])}{suffix}"
+        )
     print(f"manifest: {Path(result['output_dir']) / 'web-evidence-resolved.json'}")
 
 
