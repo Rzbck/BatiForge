@@ -35,12 +35,14 @@ $M = Get-Content -LiteralPath $Resolved -Raw | ConvertFrom-Json
 Write-Host "`n===== RESULTAT =====" -ForegroundColor Green
 Write-Host "Sources cataloguees :" $M.catalogued_count
 Write-Host "Sources telechargees:" $M.downloaded_count
+Write-Host "Images candidates   :" $M.discovered_asset_count
 
 $Rows = foreach ($S in $M.sources) {
     [PSCustomObject]@{
         Id = $S.id
         Kind = $S.kind
         Status = $S.status
+        Candidates = if ($null -ne $S.asset_candidate_count) { $S.asset_candidate_count } else { 0 }
         Usage = $S.geometry_usage
         Local = $S.local_path
     }
