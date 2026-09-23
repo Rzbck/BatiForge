@@ -10,6 +10,94 @@ import laspy
 import numpy as np
 
 
+def _fill_ground_cells(
+    measured: dict[int, float],
+    *,
+    nx: int,
+    ny: int,
+    radius_cells: int,
+    min_neighbors: int,
+    min_directions: int,
+    max_z_span_m: float,
+) -> dict[int, float]:
+    if radius_cells <= 0:
+        return {}
+    if min_neighbors < 3:
+        raise ValueError("fill_min_neighbors must be >= 3")
+    if min_directions < 1 or min_directions > 4:
+        raise ValueError("fill_min_directions must be between 1 and 4")
+    if max_z_span_m <= 0:
+        raise ValueError("fill_max_z_span_m must be > 0")
+
+    filled: dict[int, float] = {}
+    radius_sq = float(radius_cells * radius_cells) + 1e-9
+
+    for row in range(ny):
+        for col in range(nx):
+            key = row * nx + col
+            if key in measured:
+                continue
+
+            samples: list[tuple[float, float, float]] = []
+            has_left = has_right = has_down = has_up = False
+            r0 = max(0, row - radius_cells)
+            r1 = min(ny - 1, row + radius_cells)
+            c0 = max(0, col - radius_cells)
+            c1 = min(nx - 1, col + radius_cells)
+
+            for rr in range(r0, r1 + 1):
+                for cc in range(c0, c1 + 1):
+                    if rr == row and cc == col:
+                        continue
+                    dr = rr - row
+                    dc = cc - col
+                    if float(dr * dr + dc * dc) > radius_sq:
+                        continue
+                    neighbor_key = rr * nx + cc
+                    z = measured.get(neighbor_key)
+                    if z is None:
+                        continue
+                    samples.append((float(dc), float(dr), float(z)))
+                    if dc < 0:
+                        has_left = True
+                    elif dc > 0:
+                        has_right = True
+                    if dr < 0:
+                        has_down = True
+                    elif dr > 0:
+                        has_up = True
+
+            if len(samples) < min_neighbors:
+                continue
+            if sum((has_left, has_right, has_down, has_up)) < min_directions:
+                continue
+
+            z_values = np.asarray([sample[2] for sample in samples], dtype=np.float64)
+            if float(z_values.max() - z_values.min()) > max_z_span_m:
+                continue
+
+            design = np.asarray(
+                [[sample[0], sample[1], 1.0] for sample in samples],
+                dtype=np.float64,
+            )
+            try:
+                coeffs, *_ = np.linalg.lstsq(design, z_values, rcond=None)
+            except np.linalg.LinAlgError:
+                continue
+            predicted = float(coeffs[2])
+            if not math.isfinite(predicted):
+                continue
+
+            tolerance = 0.05
+            if predicted < float(z_values.min()) - tolerance:
+                continue
+            if predicted > float(z_values.max()) + tolerance:
+                continue
+            filled[key] = predicted
+
+    return filled
+
+
 def build_ground_grid(
     xyz: np.ndarray,
     classifications: np.ndarray,
@@ -21,6 +109,10 @@ def build_ground_grid(
     ground_classes: tuple[int, ...] = (2,),
     cell_size_m: float = 0.5,
     min_points_per_cell: int = 1,
+    fill_radius_cells: int = 0,
+    fill_min_neighbors: int = 4,
+    fill_min_directions: int = 3,
+    fill_max_z_span_m: float = 0.6,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     if cell_size_m <= 0:
         raise ValueError("cell_size_m must be > 0")
@@ -58,14 +150,26 @@ def build_ground_grid(
     zs = ground[:, 2][order]
     unique, starts, counts = np.unique(keys, return_index=True, return_counts=True)
 
-    cell_z: dict[int, float] = {}
+    measured_z: dict[int, float] = {}
     for key, start, count in zip(
         unique.tolist(), starts.tolist(), counts.tolist(), strict=True
     ):
         if count >= min_points_per_cell:
-            cell_z[int(key)] = float(np.median(zs[start : start + count]))
-    if not cell_z:
+            measured_z[int(key)] = float(np.median(zs[start : start + count]))
+    if not measured_z:
         raise ValueError("no occupied cells pass min_points_per_cell")
+
+    inferred_z = _fill_ground_cells(
+        measured_z,
+        nx=nx,
+        ny=ny,
+        radius_cells=fill_radius_cells,
+        min_neighbors=fill_min_neighbors,
+        min_directions=fill_min_directions,
+        max_z_span_m=fill_max_z_span_m,
+    )
+    cell_z = dict(measured_z)
+    cell_z.update(inferred_z)
 
     vertices: list[tuple[float, float, float]] = []
     indices: dict[int, int] = {}
@@ -95,14 +199,18 @@ def build_ground_grid(
         if faces
         else np.empty((0, 3), dtype=np.int64)
     )
+    total_cells = nx * ny
     meta = {
         "ground_point_count": int(len(ground)),
         "grid": {
             "nx": nx,
             "ny": ny,
-            "cell_count": nx * ny,
+            "cell_count": total_cells,
+            "measured_cell_count": len(measured_z),
+            "inferred_cell_count": len(inferred_z),
             "occupied_cell_count": len(vertices),
-            "coverage_ratio": len(vertices) / (nx * ny),
+            "measured_coverage_ratio": len(measured_z) / total_cells,
+            "coverage_ratio": len(vertices) / total_cells,
         },
         "mesh": {"vertex_count": len(vertices), "face_count": len(faces)},
     }
@@ -160,6 +268,10 @@ def build_from_lidars(
     ground_classes: tuple[int, ...],
     min_points_per_cell: int,
     chunk_size: int,
+    fill_radius_cells: int = 0,
+    fill_min_neighbors: int = 4,
+    fill_min_directions: int = 3,
+    fill_max_z_span_m: float = 0.6,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     footprint = json.loads(footprint_json.read_text(encoding="utf-8"))
     crop = _footprint_crop(footprint, margin_m)
@@ -170,19 +282,12 @@ def build_from_lidars(
         bounds = lidar_header_bounds(lidar)
         overlap_ratio = _bounds_overlap_ratio(bounds, crop)
         candidates.append(
-            {
-                "path": lidar,
-                "bounds": bounds,
-                "overlap_ratio": overlap_ratio,
-            }
+            {"path": lidar, "bounds": bounds, "overlap_ratio": overlap_ratio}
         )
 
     overlapping = [item for item in candidates if item["overlap_ratio"] > 0.0]
     if not overlapping:
         raise ValueError("no LiDAR source overlaps requested context crop")
-
-    # Process the strongest spatial contributors first. Multiple partial strips are
-    # intentionally allowed; exact duplicate ground returns are removed afterwards.
     overlapping.sort(
         key=lambda item: (item["overlap_ratio"], item["path"].stat().st_size),
         reverse=True,
@@ -232,7 +337,6 @@ def build_from_lidars(
         cropped_all += source_cropped_all
         if source_ground_parts:
             xyz_parts.extend(source_ground_parts)
-
         source_stats.append(
             {
                 "lidar_path": str(lidar),
@@ -268,11 +372,15 @@ def build_from_lidars(
         ground_classes=ground_classes,
         cell_size_m=cell_size_m,
         min_points_per_cell=min_points_per_cell,
+        fill_radius_cells=fill_radius_cells,
+        fill_min_neighbors=fill_min_neighbors,
+        fill_min_directions=fill_min_directions,
+        fill_max_z_span_m=fill_max_z_span_m,
     )
     meta.update(
         {
-            "schema_version": 2,
-            "method": "multi-source ground-class regular grid with per-cell median elevation",
+            "schema_version": 3,
+            "method": "multi-source ground grid with measured medians and conservative local-plane gap fill",
             "source": {
                 "lidar_paths": [str(item["path"]) for item in overlapping],
                 "candidate_count": len(candidates),
@@ -298,6 +406,10 @@ def build_from_lidars(
                 "cell_size_m": cell_size_m,
                 "ground_classes": list(ground_classes),
                 "min_points_per_cell": min_points_per_cell,
+                "fill_radius_cells": fill_radius_cells,
+                "fill_min_neighbors": fill_min_neighbors,
+                "fill_min_directions": fill_min_directions,
+                "fill_max_z_span_m": fill_max_z_span_m,
             },
             "crop_abs_xy": {
                 "min_x": min_x,
@@ -327,6 +439,10 @@ def build_from_lidar(
     ground_classes: tuple[int, ...],
     min_points_per_cell: int,
     chunk_size: int,
+    fill_radius_cells: int = 0,
+    fill_min_neighbors: int = 4,
+    fill_min_directions: int = 3,
+    fill_max_z_span_m: float = 0.6,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     return build_from_lidars(
         (lidar,),
@@ -337,6 +453,10 @@ def build_from_lidar(
         ground_classes=ground_classes,
         min_points_per_cell=min_points_per_cell,
         chunk_size=chunk_size,
+        fill_radius_cells=fill_radius_cells,
+        fill_min_neighbors=fill_min_neighbors,
+        fill_min_directions=fill_min_directions,
+        fill_max_z_span_m=fill_max_z_span_m,
     )
 
 
@@ -380,6 +500,10 @@ def main() -> None:
     p.add_argument("--ground-class", type=int, action="append", dest="ground_classes")
     p.add_argument("--min-points-per-cell", type=int, default=1)
     p.add_argument("--chunk-size", type=int, default=1_000_000)
+    p.add_argument("--fill-radius-cells", type=int, default=0)
+    p.add_argument("--fill-min-neighbors", type=int, default=4)
+    p.add_argument("--fill-min-directions", type=int, default=3)
+    p.add_argument("--fill-max-z-span-m", type=float, default=0.6)
     p.add_argument("--output-json", type=Path, required=True)
     p.add_argument("--output-obj", type=Path, required=True)
     p.add_argument("--output-ply", type=Path, required=True)
@@ -394,6 +518,10 @@ def main() -> None:
         ground_classes=tuple(args.ground_classes or [2]),
         min_points_per_cell=args.min_points_per_cell,
         chunk_size=args.chunk_size,
+        fill_radius_cells=args.fill_radius_cells,
+        fill_min_neighbors=args.fill_min_neighbors,
+        fill_min_directions=args.fill_min_directions,
+        fill_max_z_span_m=args.fill_max_z_span_m,
     )
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(
@@ -406,6 +534,8 @@ def main() -> None:
         "context ground: "
         f"sources={meta['source']['overlapping_source_count']} "
         f"points={meta['ground_point_count']} "
+        f"measured={grid['measured_cell_count']} "
+        f"inferred={grid['inferred_cell_count']} "
         f"cells={grid['occupied_cell_count']}/{grid['cell_count']} "
         f"coverage={grid['coverage_ratio']:.3f} "
         f"vertices={len(vertices)} faces={len(faces)}"
