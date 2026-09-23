@@ -13,7 +13,7 @@ $Work = "$Root\workspaces\$Workspace"
 $LidarRoot = "$Work\10_lidar"
 $Foot = "$Work\40_mesh\footprint-v1\rnb-footprint.json"
 $Roof = "$Work\40_mesh\roof-planes-v1\roof-planes.json"
-$Out = "$Work\60_context\context-ground-v1"
+$Out = "$Work\60_context\context-ground-v2"
 $Json = "$Out\context-ground.json"
 $Obj = "$Out\context-ground.obj"
 $Ply = "$Out\context-ground.ply"
@@ -24,62 +24,74 @@ foreach ($Path in @($Python,$Foot,$Roof,$LidarRoot)) {
 
 $Candidates = @(
     Get-ChildItem -LiteralPath $LidarRoot -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -in @('.laz','.las') } |
-        Sort-Object Length -Descending
+        Where-Object {
+            $_.Extension -in @('.laz','.las') -and
+            $_.Name -notmatch 'building|context-3m'
+        } |
+        Sort-Object FullName -Unique
 )
-if ($Candidates.Count -eq 0) { throw "Aucun LAS/LAZ sous $LidarRoot" }
-
-$Source = $Candidates |
-    Where-Object { $_.Name -match '0940_6540' -and $_.Name -notmatch 'building|context-3m' } |
-    Select-Object -First 1
-if (-not $Source) {
-    $Source = $Candidates |
-        Where-Object { $_.Name -notmatch 'building|context-3m' } |
-        Select-Object -First 1
-}
-if (-not $Source) {
-    Write-Host "Sources trouvees :" -ForegroundColor Yellow
-    $Candidates | Select-Object Name,Length,FullName | Format-Table -AutoSize
-    throw "Aucune source LiDAR plus large que building/context-3m."
+if ($Candidates.Count -eq 0) {
+    throw "Aucune source LAS/LAZ de contexte sous $LidarRoot"
 }
 
 $GroundZ = [double](Get-Content -LiteralPath $Roof -Raw | ConvertFrom-Json).georeference.ground_z
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 Remove-Item $Json,$Obj,$Ply -Force -ErrorAction SilentlyContinue
 
-Write-Host "`n===== BATIFORGE CONTEXT GROUND =====" -ForegroundColor Cyan
-Write-Host "LiDAR  : $($Source.FullName)"
-Write-Host "Taille : $([math]::Round($Source.Length / 1MB,2)) MB"
-Write-Host "Margin : $MarginM m"
-Write-Host "Grid   : $CellSizeM m"
-Write-Host "Ground : $GroundZ m IGN69"
+Write-Host "`n===== BATIFORGE CONTEXT GROUND V2 =====" -ForegroundColor Cyan
+Write-Host "Sources candidates : $($Candidates.Count)"
+Write-Host "Margin             : $MarginM m"
+Write-Host "Grid               : $CellSizeM m"
+Write-Host "Ground             : $GroundZ m IGN69"
 
 & $Python -m unittest discover -s tests -v
 if ($LASTEXITCODE -ne 0) { throw "Tests echoues." }
 
-& $Python -m batiforge.reconstruction.context_ground `
-    --lidar $Source.FullName `
-    --footprint-json $Foot `
-    --ground-z $GroundZ `
-    --margin-m $MarginM `
-    --cell-size-m $CellSizeM `
-    --ground-class 2 `
-    --min-points-per-cell 1 `
-    --output-json $Json `
-    --output-obj $Obj `
-    --output-ply $Ply
+$Args = @(
+    '-m', 'batiforge.reconstruction.context_ground'
+)
+foreach ($Source in $Candidates) {
+    $Args += @('--lidar', $Source.FullName)
+}
+$Args += @(
+    '--footprint-json', $Foot,
+    '--ground-z', ([string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:R}', $GroundZ)),
+    '--margin-m', ([string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:R}', $MarginM)),
+    '--cell-size-m', ([string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:R}', $CellSizeM)),
+    '--ground-class', '2',
+    '--min-points-per-cell', '1',
+    '--output-json', $Json,
+    '--output-obj', $Obj,
+    '--output-ply', $Ply
+)
+
+& $Python @Args
 if ($LASTEXITCODE -ne 0) { throw "Generation contexte echouee." }
 
 $C = Get-Content -LiteralPath $Json -Raw | ConvertFrom-Json
+
+Write-Host "`n===== SOURCES RETENUES =====" -ForegroundColor Cyan
+$Rows = foreach ($S in $C.source.sources) {
+    [PSCustomObject]@{
+        Fichier = [IO.Path]::GetFileName($S.lidar_path)
+        Overlap = [math]::Round([double]$S.crop_overlap_ratio,3)
+        PointsCrop = $S.cropped_all_point_count
+        Ground2 = if ($S.classification_histogram.PSObject.Properties.Name -contains '2') { $S.classification_histogram.'2' } else { 0 }
+    }
+}
+$Rows | Format-Table -AutoSize
+
 Write-Host "`n===== RESULTAT =====" -ForegroundColor Green
-Write-Host "Points crop total :" $C.source.cropped_all_point_count
-Write-Host "Points sol classe2:" $C.ground_point_count
-Write-Host "Cells             :" "$($C.grid.occupied_cell_count)/$($C.grid.cell_count)"
-Write-Host "Coverage          :" ([math]::Round([double]$C.grid.coverage_ratio,3))
-Write-Host "Vertices          :" $C.mesh.vertex_count
-Write-Host "Faces             :" $C.mesh.face_count
-Write-Host "Z local           :" "$($C.mesh.local_z_min_m) -> $($C.mesh.local_z_max_m) m"
-Write-Host "Classes crop      :" ($C.source.classification_histogram | ConvertTo-Json -Compress)
+Write-Host "Sources overlap    :" $C.source.overlapping_source_count
+Write-Host "Points crop total  :" $C.source.cropped_all_point_count
+Write-Host "Ground brut        :" $C.source.raw_ground_point_count_before_dedup
+Write-Host "Ground deduplique  :" $C.source.deduplicated_ground_point_count
+Write-Host "Cells              :" "$($C.grid.occupied_cell_count)/$($C.grid.cell_count)"
+Write-Host "Coverage           :" ([math]::Round([double]$C.grid.coverage_ratio,3))
+Write-Host "Vertices           :" $C.mesh.vertex_count
+Write-Host "Faces              :" $C.mesh.face_count
+Write-Host "Z local            :" "$($C.mesh.local_z_min_m) -> $($C.mesh.local_z_max_m) m"
+Write-Host "Classes crop       :" ($C.source.classification_histogram | ConvertTo-Json -Compress)
 
 Get-Item $Json,$Obj,$Ply | Select-Object Name,Length,FullName | Format-Table -AutoSize
 
@@ -88,5 +100,5 @@ if (git status --porcelain) {
     throw "Worktree non CLEAN."
 }
 Write-Host "Status : CLEAN" -ForegroundColor Green
-Write-Host "`nOBJ CONTEXTE : $Obj" -ForegroundColor Green
+Write-Host "`nOBJ CONTEXTE V2 : $Obj" -ForegroundColor Green
 Start-Process explorer.exe "/select,$Obj"
