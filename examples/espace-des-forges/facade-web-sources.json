@@ -21,9 +21,23 @@
       "page_url": "https://blog.vellut.com/2021/04/walk-in-cran-gevrier-annecy/",
       "download": false,
       "discover_assets": true,
-      "rights": "Publicly viewable page. Image rights must be verified at the original Flickr item before any local redistribution; catalogue for evidence discovery only.",
-      "geometry_usage": "candidate_after_rights_check",
+      "rights": "The page embeds Flickr photographs by Guilhem Vellut. His Flickr profile states that all of his photos are Creative Commons Attribution (CC BY); keep attribution and original-photo provenance with any locally downloaded evidence.",
+      "geometry_usage": "licensed_candidate",
       "notes": "The page explicitly identifies a photo as 'Chapelle Espace des Forges @ Cran-Gevrier'."
+    },
+    {
+      "id": "vellut-forges-exterior-49769001212",
+      "kind": "image",
+      "title": "Chapelle Espace des Forges @ Cran-Gevrier - exterior reference",
+      "page_url": "https://www.flickr.com/photos/o_0/49769001212/",
+      "asset_url": "https://live.staticflickr.com/65535/49769001212_b897ce8cf1_z.jpg",
+      "filename": "vellut-forges-exterior-49769001212.jpg",
+      "download": true,
+      "rights": "CC BY 2.0. Author: Guilhem Vellut. The author's Flickr profile states that all of his photos are licensed under Creative Commons Attribution; attribution and the original Flickr photo URL must be preserved.",
+      "license_url": "https://creativecommons.org/licenses/by/2.0/",
+      "author": "Guilhem Vellut",
+      "geometry_usage": "licensed_reference_candidate",
+      "notes": "Direct image embedded by the author's walk page and explicitly captioned 'Chapelle Espace des Forges @ Cran-Gevrier'. Use as facade evidence after visual identity check against the metric building core."
     },
     {
       "id": "haute-savoie-tourism-forges",
