@@ -51,6 +51,7 @@ database.db
 
 # Logs / temporary
 *.log
+*.log.json
 *.tmp
 *.partial
 *.bak
