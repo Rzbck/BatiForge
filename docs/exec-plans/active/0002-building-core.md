@@ -49,7 +49,7 @@ The 100% containment validates consistency of the already isolated building clou
 
 ## Milestone C — topology-constrained roof evidence
 
-IMPLEMENTED_NOT_VALIDATED on the active branch:
+HOST_VALIDATED on exact SHA `7fea565a578f0b8601327fe38f46c430c2f1bb1f`:
 - re-evaluate point support against the fitted roof-plane equations inside the authoritative footprint;
 - exclude the >=22 m compact high structure from the main-roof topology pass;
 - use a metric occupancy grid only to measure local support, never as final mesh geometry;
@@ -61,19 +61,49 @@ IMPLEMENTED_NOT_VALIDATED on the active branch:
 - classify continuous intersection candidates separately from height-step/overlap candidates;
 - output deterministic JSON plus a line-only diagnostic OBJ.
 
+Reference-case validation:
+- 19 unit tests PASS;
+- 18,964 main-roof candidates after excluding >=22 m high structure;
+- 17,794 assigned; ratio 0.938304;
+- 1,518 / 1,710 observed support cells resolved; ratio 0.887719;
+- unresolved: 42 sparse, 115 mixed-support, 35 no compatible plane;
+- 306 high-structure points preserved separately;
+- 8 measured plane adjacencies;
+- P1↔P2 is the dominant continuous intersection candidate (~24 m, 0.13 m median gap, 0.09 m equality-line distance);
+- P2↔P5, P1↔P6 and P4↔P7 are shorter continuous candidates;
+- P5↔P6 is only ~0.5 m and should not be promoted by default;
+- P1↔P4, P2↔P3 and P1↔P7 are height-step/overlap candidates with ~4.9–5.5 m height gaps;
+- Git remained CLEAN.
+
+One boundary-classification edge case reports 19,403 points inside during the topology pass while the authoritative footprint audit reports 19,404/19,404. Keep this discrepancy visible until boundary semantics are unified; it does not materially affect the topology metrics.
+
+## Milestone D — conservative analytic roof vectors
+
+IMPLEMENTED_NOT_VALIDATED on the active branch:
+- promote only measured `continuous_intersection_candidate` relationships;
+- default minimum measured boundary support: 1.0 m;
+- derive exact roof-vector geometry from the analytic equality line of each fitted plane pair;
+- use occupancy-grid boundary segments only to bound the supported span, never as final geometry;
+- add a conservative support margin before clipping;
+- clip vector segments to the authoritative footprint;
+- preserve height-step/overlap relationships separately;
+- emit deterministic JSON and line-only local-metric OBJ skeleton;
+- synthetic tests cover equality-line vectorization, authoritative footprint clipping, short-support rejection and no-face OBJ output.
+
 Acceptance for the reference case:
-- exact branch SHA host validation on the real isolated LAZ + validated footprint JSON;
-- high main-roof point assignment ratio without absorbing the >=22 m high structure;
-- meaningful support for the dominant fitted planes;
-- adjacency graph consistent with measured plane families;
-- unresolved regions reported rather than silently filled;
-- diagnostic outputs remain gitignored and Git stays CLEAN.
+- exact branch SHA host validation on the already validated roof/topology/footprint JSON outputs;
+- dominant P1↔P2 vector survives and remains close to the measured ~24 m support;
+- P2↔P5, P1↔P6 and P4↔P7 are evaluated conservatively;
+- the ~0.5 m P5↔P6 relation is rejected by the default 1.0 m support gate;
+- height-step pairs are not promoted to ridge vectors;
+- all vector endpoints remain inside/on the authoritative footprint;
+- Git remains CLEAN.
 
-Only after these evidence gates pass should accepted relationships be converted into vector roof regions.
+Only after these vector gates pass should roof-region faces be constructed.
 
-## Milestone D — bounded shell
+## Milestone E — bounded shell
 
-- convert accepted roof relationships into vector regions clipped to the authoritative footprint;
+- use validated vector edges + authoritative footprint to construct vector roof regions;
 - derive eaves/walls from footprint + validated roof topology;
 - assemble a clean bounded shell;
 - verify manifold/boundary status explicitly;
