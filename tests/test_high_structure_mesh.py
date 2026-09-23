@@ -89,9 +89,37 @@ class HighStructureMeshTests(unittest.TestCase):
         self.assertEqual(result["mesh_count"], 1)
         mesh = result["meshes"][0]
         self.assertEqual(mesh["section_count"], 3)
+        self.assertEqual(mesh["section_mode"], "fixed_height_bins")
         self.assertEqual(mesh["ring_vertices"], 8)
         self.assertAlmostEqual(mesh["sections"][0]["z_m"], 10.0)
         self.assertAlmostEqual(mesh["sections"][-1]["z_m"], 12.0)
+
+    def test_equal_support_fallback_recovers_underfilled_metric_slices(self):
+        records = []
+        for z, radius in ((10.0, 1.0), (10.5, 0.95), (11.0, 0.90), (11.5, 0.85)):
+            for x, y in ((-radius, -radius), (radius, -radius), (radius, radius), (-radius, radius)):
+                records.append({"assembly_id": 1, "component_id": 1, "x": x, "y": y, "z": z})
+        assembly = {
+            "schema_version": 1,
+            "georeference": self._assembly()["georeference"],
+            "assemblies": [{"assembly_id": 1, "point_count": len(records), "reconstruction_gate": True}],
+            "point_records": records,
+        }
+        result = build_high_structure_mesh(
+            assembly,
+            slice_height_m=0.4,
+            min_slice_points=6,
+            min_section_area_m2=0.2,
+            ring_vertices=8,
+            max_bridge_gap_m=1.5,
+            adaptive_target_sections=2,
+            adaptive_max_band_height_m=1.0,
+        )
+        self.assertEqual(result["mesh_count"], 1)
+        mesh = result["meshes"][0]
+        self.assertEqual(mesh["section_mode"], "adaptive_equal_support_bands")
+        self.assertEqual(mesh["section_count"], 2)
+        self.assertEqual(mesh["fixed_section_count_before_fallback"], 0)
 
     def test_sparse_evidence_is_not_meshed(self):
         assembly = self._assembly()
@@ -125,7 +153,6 @@ class HighStructureMeshTests(unittest.TestCase):
         self.assertIn("o high_structure_01", high_text)
         self.assertIn("o shell_ground_floor", composite_text)
         self.assertIn("o high_structure_01", composite_text)
-        # Concave floor is ear-clipped into triangles instead of one 5-vertex face.
         floor_part = composite_text.split("o shell_ground_floor", 1)[1].split("o high_structure_01", 1)[0]
         face_lines = [line for line in floor_part.splitlines() if line.startswith("f ")]
         self.assertGreaterEqual(len(face_lines), 3)
