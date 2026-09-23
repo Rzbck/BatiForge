@@ -20,6 +20,7 @@
       "title": "Walk in Cran-Gevrier & Annecy - Chapelle Espace des Forges",
       "page_url": "https://blog.vellut.com/2021/04/walk-in-cran-gevrier-annecy/",
       "download": false,
+      "discover_assets": true,
       "rights": "Publicly viewable page. Image rights must be verified at the original Flickr item before any local redistribution; catalogue for evidence discovery only.",
       "geometry_usage": "candidate_after_rights_check",
       "notes": "The page explicitly identifies a photo as 'Chapelle Espace des Forges @ Cran-Gevrier'."
@@ -30,6 +31,7 @@
       "title": "Espace des Forges - Haute-Savoie Mont-Blanc",
       "page_url": "https://hautesavoiemontblanc-tourisme.com/offres/espace-des-forges-cran-gevrier-fr-6475318/",
       "download": false,
+      "discover_assets": true,
       "rights": "Public tourism listing supplied by Ville d'Annecy; image reuse terms not asserted by BatiForge. Catalogue only until asset rights are checked.",
       "geometry_usage": "candidate_after_rights_check",
       "notes": "Listing contains Espace des Forges imagery and exact address."
@@ -40,6 +42,7 @@
       "title": "L'Eglise des Forges Cran-Gevrier - decembre 2021",
       "page_url": "https://l-art-s-affiche.fr/les-lieux/leglise-des-forges-cran-gevrier-decembre-2021/",
       "download": false,
+      "discover_assets": true,
       "rights": "Publicly viewable event page; reuse terms not asserted by BatiForge. Catalogue only unless rights are verified.",
       "geometry_usage": "interior_reference_only",
       "notes": "Provides interior views showing stained-glass/window rhythm and nave geometry."
