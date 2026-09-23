@@ -20,7 +20,7 @@ Default branch: `main`
 Current active work:
 - issue `#7` — Implement building-centric reconstruction core;
 - branch `feat/building-core-20260922`;
-- PR `#8` — deterministic LiDAR roof-plane core + authoritative RNB footprint alignment + topology evidence;
+- PR `#8` — roof-plane core + authoritative footprint + support-aware topology + conservative analytic roof vectors;
 - active plan `docs/exec-plans/active/0002-building-core.md`.
 
 Imagery survey core was merged to `main` through PR `#5` at merge commit `9d7261c219c76aaa4cabd3db7e41e58c33919a63`.
@@ -74,7 +74,7 @@ The source mesh is Z-up. Future Blender imports must explicitly preserve intende
 
 ## HOST_VALIDATED — imagery survey core
 
-Panoramax metadata/orientation/preview survey is implemented and merged. The provider is useful generically, but **Panoramax is rejected as a reconstruction-image source for the Espace des Forges** after thumbnail inspection showed motorway/noise-barrier/vegetation coverage rather than useful building views.
+Panoramax metadata/orientation/preview survey is implemented and merged. The provider is useful generically, but Panoramax is rejected as a reconstruction-image source for the Espace des Forges after thumbnail inspection showed motorway/noise-barrier/vegetation coverage rather than useful building views.
 
 KartaView was then probed metadata-first. Five nearby API results were returned, but their actual camera positions were still roughly 232–255 m from the target and thumbnail inspection again showed road imagery unrelated to the building. KartaView provider implementation was therefore stopped for this reference case; issue `#6` was closed as not planned.
 
@@ -108,7 +108,7 @@ Detected plane evidence:
 
 Interpretation constraints:
 - the very low 4–7 cm plane RMSE and paired near-opposite aspects are strong evidence for real roof systems;
-- convex support hull areas overlap and must **not** be summed as building area or treated as final roof boundaries;
+- convex support hull areas overlap and must not be summed as building area or treated as final roof boundaries;
 - the authoritative footprint/topology stage is required before shell construction;
 - the compact high structure remains separate evidence and must not be erased by roof simplification.
 
@@ -130,22 +130,45 @@ Live RNB OGC validation for `1A6BNQQ3VXGZ` using the exact roof-analysis local o
 
 This validates the RNB and isolated LiDAR planimetry in the same EPSG:2154 local metric frame. The 100% containment is a consistency result for the already isolated building cloud, not evidence that arbitrary raw LiDAR can be accepted without footprint filtering.
 
-## IMPLEMENTED_NOT_VALIDATED — support-aware roof topology evidence
+## HOST_VALIDATED — support-aware roof topology evidence
 
-Current branch adds `batiforge.reconstruction.roof_topology`.
+Exact host-validated code SHA: `7fea565a578f0b8601327fe38f46c430c2f1bb1f`.
 
-It deliberately does **not** create final mesh geometry. It:
-- re-evaluates real LiDAR support against the fitted plane equations inside the authoritative footprint;
-- excludes the >=22 m compact high structure from the main-roof topology pass;
-- uses a metric occupancy grid only as diagnostic support evidence, never as production stair-step geometry;
-- labels cells only when point support is sufficient and pure enough;
-- measures plane-to-plane adjacency;
-- reports boundary length, median/p95 height gap and distance to the analytic plane-equality line;
-- distinguishes continuous intersection candidates from height-step/overlap candidates;
-- preserves sparse/mixed/unresolved regions explicitly;
-- writes JSON plus a line-only diagnostic OBJ, not roof faces.
+Real isolated LAZ + validated footprint result:
+- 19 unit tests PASS;
+- 19,404 source points;
+- 18,964 main-roof candidates after excluding the >=22 m high structure;
+- 17,794 assigned to fitted planes; assignment ratio 0.938304;
+- 1,518 / 1,710 observed support cells resolved; ratio 0.887719;
+- unresolved cells: 42 sparse, 115 mixed-support, 35 with no plane inside residual threshold;
+- compact high structure preserved separately: 306 points >=22 m;
+- 8 measured plane adjacencies;
+- Git remained CLEAN.
 
-The next host validation must be tied to the exact branch SHA and the real Espace des Forges LAZ.
+Key measured adjacencies:
+- P1↔P2: ~24.0 m boundary, median gap 0.13 m, p95 gap 0.31 m, median equality-line distance 0.09 m — strong continuous-intersection candidate;
+- P2↔P5: ~5.5 m, gap 0.10 m, equality-line distance 0.16 m — continuous candidate;
+- P1↔P6: ~4.0 m, gap 0.06 m, equality-line distance 0.10 m — continuous candidate;
+- P4↔P7: ~1.5 m, gap 0.05 m, equality-line distance 0.17 m — continuous candidate;
+- P5↔P6: ~0.5 m, gap 0.11 m, equality-line distance 0.11 m — continuous but too short to promote by default;
+- P1↔P4, P2↔P3 and P1↔P7 show ~4.9–5.5 m height gaps and are treated as height-step/overlap candidates, not ridges.
+
+One point is reported outside the footprint in the topology pass although the authoritative alignment audit reported 19,404/19,404 inside. This is a boundary-classification/serialized-coordinate edge case and does not materially affect the roof support result; keep it visible until boundary semantics are unified.
+
+## IMPLEMENTED_NOT_VALIDATED — conservative analytic roof vectors
+
+Current branch adds `batiforge.reconstruction.roof_vectors`.
+
+It does not generate roof faces yet. It:
+- promotes only measured `continuous_intersection_candidate` relationships;
+- rejects short support by default (<1 m);
+- derives the exact analytic equality line from the fitted plane equations rather than tracing grid edges;
+- uses measured topology boundary segments only to bound the supported extent;
+- clips the resulting vector segment to the authoritative footprint;
+- keeps height-step/overlap relationships separate;
+- emits deterministic JSON plus a line-only local-metric OBJ skeleton.
+
+This is the bridge from diagnostic topology to vector roof geometry. Host validation on the real topology JSON is required before roof-region faces are constructed.
 
 ## Local migration
 
@@ -158,10 +181,10 @@ Migration is complete:
 
 ## NEXT
 
-1. Host-validate the support-aware roof-topology evidence on the exact isolated Espace des Forges LAZ + validated RNB footprint.
-2. Inspect assignment ratio, resolved-cell ratio, per-plane support and measured adjacencies; do not tune from appearance alone.
-3. Accept only adjacency/intersection relationships supported by LiDAR and plane-height continuity; preserve unresolved areas explicitly.
-4. Convert accepted topology into vector roof regions constrained by the authoritative footprint.
+1. Host-validate the conservative analytic roof vectors on the exact topology/roof/footprint outputs.
+2. Confirm that strong continuous relationships produce vector segments with lengths/locations consistent with their measured support and that height-step candidates are not promoted.
+3. Inspect the vector skeleton together with the footprint and roof-plane diagnostics in Blender if needed.
+4. Use validated vector edges + authoritative footprint to construct roof regions without staircase geometry.
 5. Derive eaves/walls and assemble a bounded clean shell.
 6. Preserve/model the compact high structure separately from the main roof.
 7. Add orthophoto/top appearance only after metric geometry is stable.
