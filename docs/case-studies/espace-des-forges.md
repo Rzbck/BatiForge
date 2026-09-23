@@ -14,8 +14,8 @@ First BatiForge reference building.
 ## Validated metric evidence
 
 RNB footprint:
-- bbox approximately 27.5 x 30.4 m;
-- area approximately 428.06 m².
+- live OGC feature area: 428.075 m²;
+- bbox: 27.5 x 30.4 m.
 
 Isolated LiDAR:
 - 19,404 building-class points;
@@ -71,6 +71,25 @@ The convex support hulls are only diagnostic envelopes. Their projected areas ov
 
 The high-structure evidence was independently reproduced by the new implementation: 306 points >=22 m, 26 >=24 m, 13 >=26 m, 5 >=28 m and max 29.17 m above ground.
 
+### Authoritative footprint alignment
+
+The RNB footprint stage was host-validated on exact code SHA `748a624a955108641add2cc91c5c41b22cdd9ebb`:
+- 15 unit tests PASS;
+- live OGC endpoint returned RNB `1A6BNQQ3VXGZ` as one polygon;
+- EPSG:4326 geometry projected to EPSG:2154 using the exact roof-analysis local origin;
+- area: 428.075 m²;
+- bbox: 27.5 x 30.4 m;
+- all 19,404 isolated class-6 LiDAR points were inside the authoritative footprint;
+- 0 outside;
+- inside ratio: 1.000000;
+- Git remained CLEAN.
+
+This establishes a shared metric planimetric frame between the authoritative footprint and the isolated LiDAR evidence. The 100% containment is expected for this already isolated cloud and must not be generalized to arbitrary raw point clouds.
+
+### Current reconstruction step
+
+The active branch now adds support-aware roof-topology evidence. It reassigns main-roof LiDAR support to the fitted planes inside the authoritative footprint, excludes the >=22 m compact high structure from the main-roof pass, measures adjacency/height continuity and preserves unresolved regions. The metric grid used here is diagnostic evidence only and is not exported as stair-step production geometry.
+
 ## Imagery
 
 The metadata-only Panoramax survey was first host-validated at code SHA `049978e533a35d05675003bf4ef4bbd5c1251e2d`.
@@ -109,4 +128,4 @@ Panoramax and KartaView are rejected as reconstruction imagery for Espace des Fo
 
 ## Current next step
 
-Fetch the authoritative RNB footprint for `1A6BNQQ3VXGZ`, project it to EPSG:2154 using the exact roof-analysis local origin, verify metric alignment against the roof-plane diagnostic, then constrain roof topology to that footprint before deriving walls/eaves and a clean bounded shell.
+Host-validate the support-aware roof-topology evidence against the real isolated LAZ and the validated RNB footprint. Use measured plane support, adjacency, height gaps and analytic plane-intersection agreement to decide which relationships are safe to convert into vector roof regions. Preserve unresolved areas and the compact high structure separately before deriving walls/eaves and a clean bounded shell.

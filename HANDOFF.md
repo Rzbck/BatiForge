@@ -20,7 +20,7 @@ Default branch: `main`
 Current active work:
 - issue `#7` — Implement building-centric reconstruction core;
 - branch `feat/building-core-20260922`;
-- PR `#8` — deterministic LiDAR roof-plane core + authoritative RNB footprint alignment;
+- PR `#8` — deterministic LiDAR roof-plane core + authoritative RNB footprint alignment + topology evidence;
 - active plan `docs/exec-plans/active/0002-building-core.md`.
 
 Imagery survey core was merged to `main` through PR `#5` at merge commit `9d7261c219c76aaa4cabd3db7e41e58c33919a63`.
@@ -45,8 +45,8 @@ Target:
 Building authority:
 - RNB: `1A6BNQQ3VXGZ`
 - BD TOPO: `BATIMENT0000000298370002`
-- footprint bbox approximately 27.5 x 30.4 m
-- footprint area approximately 428.06 m²
+- footprint bbox: 27.5 x 30.4 m
+- footprint area: 428.075 m² from the live RNB OGC feature
 
 IGN point cloud:
 - primary tile `LHD_FXX_0940_6540_PTS_LAMB93_IGN69.copc.laz`
@@ -112,17 +112,40 @@ Interpretation constraints:
 - the authoritative footprint/topology stage is required before shell construction;
 - the compact high structure remains separate evidence and must not be erased by roof simplification.
 
-## IMPLEMENTED_NOT_VALIDATED — authoritative footprint alignment
+## HOST_VALIDATED — authoritative footprint alignment
 
-Current branch HEAD includes:
-- fetch by RNB ID from the public RNB building API in GeoJSON;
-- project EPSG:4326 footprint geometry to EPSG:2154;
-- reuse the exact roof-analysis local origin so footprint and roof diagnostics share one metric frame;
-- deterministic JSON plus local Z-up diagnostic OBJ outline;
-- synthetic projection tests;
-- fix for the `python -m ...roof_planes` eager-import RuntimeWarning seen during host validation.
+Exact host-validated code SHA: `748a624a955108641add2cc91c5c41b22cdd9ebb`.
 
-This footprint stage is not HOST_VALIDATED on the real RNB feature yet.
+Live RNB OGC validation for `1A6BNQQ3VXGZ` using the exact roof-analysis local origin:
+- 15 unit tests PASS;
+- source endpoint: `https://rnb-api.beta.gouv.fr/api/alpha/ogc/collections/buildings/items/1A6BNQQ3VXGZ`;
+- one authoritative polygon;
+- projected area: 428.075 m²;
+- projected bbox: 27.5 x 30.4 m;
+- 19,404 / 19,404 isolated class-6 LiDAR points inside the authoritative footprint;
+- 0 outside;
+- inside ratio: 1.000000;
+- output remained under gitignored workspace paths;
+- worktree remained CLEAN.
+
+This validates the RNB and isolated LiDAR planimetry in the same EPSG:2154 local metric frame. The 100% containment is a consistency result for the already isolated building cloud, not evidence that arbitrary raw LiDAR can be accepted without footprint filtering.
+
+## IMPLEMENTED_NOT_VALIDATED — support-aware roof topology evidence
+
+Current branch adds `batiforge.reconstruction.roof_topology`.
+
+It deliberately does **not** create final mesh geometry. It:
+- re-evaluates real LiDAR support against the fitted plane equations inside the authoritative footprint;
+- excludes the >=22 m compact high structure from the main-roof topology pass;
+- uses a metric occupancy grid only as diagnostic support evidence, never as production stair-step geometry;
+- labels cells only when point support is sufficient and pure enough;
+- measures plane-to-plane adjacency;
+- reports boundary length, median/p95 height gap and distance to the analytic plane-equality line;
+- distinguishes continuous intersection candidates from height-step/overlap candidates;
+- preserves sparse/mixed/unresolved regions explicitly;
+- writes JSON plus a line-only diagnostic OBJ, not roof faces.
+
+The next host validation must be tied to the exact branch SHA and the real Espace des Forges LAZ.
 
 ## Local migration
 
@@ -135,12 +158,12 @@ Migration is complete:
 
 ## NEXT
 
-1. Host-validate the RNB footprint fetch/projection against `1A6BNQQ3VXGZ` using the exact roof-analysis origin.
-2. Compare returned planimetric area/bounds with the already validated ~428.06 m² / ~27.5 x 30.4 m evidence.
-3. Inspect roof-plane diagnostic OBJ and authoritative footprint OBJ together in Blender to verify metric alignment.
-4. Replace unconstrained convex roof hulls with footprint/topology-constrained patches.
+1. Host-validate the support-aware roof-topology evidence on the exact isolated Espace des Forges LAZ + validated RNB footprint.
+2. Inspect assignment ratio, resolved-cell ratio, per-plane support and measured adjacencies; do not tune from appearance alone.
+3. Accept only adjacency/intersection relationships supported by LiDAR and plane-height continuity; preserve unresolved areas explicitly.
+4. Convert accepted topology into vector roof regions constrained by the authoritative footprint.
 5. Derive eaves/walls and assemble a bounded clean shell.
-6. Preserve/model the compact high structure separately if the main roof segmentation does not capture it.
+6. Preserve/model the compact high structure separately from the main roof.
 7. Add orthophoto/top appearance only after metric geometry is stable.
 
 Active plan: `docs/exec-plans/active/0002-building-core.md`.
