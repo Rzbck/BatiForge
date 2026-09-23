@@ -1,63 +1,71 @@
 # Exec plan 0002 — Building-centric reconstruction core
 
-Status: ACTIVE
+Status: active.
 
-## Objective
+## Goal
 
-Build the first production-oriented BatiForge reconstruction path from authoritative building geometry and LiDAR, with street imagery treated as optional enrichment rather than the primary dependency.
+Build the first production-oriented BatiForge path around authoritative building identity, footprint and LiDAR evidence instead of relying on public street imagery.
 
-Primary flow:
+Reference building: Espace des Forges / Théâtre des collines, RNB `1A6BNQQ3VXGZ`, BD TOPO `BATIMENT0000000298370002`.
 
-selected building -> RNB/BD TOPO identity + footprint -> LiDAR HD subcrop -> metric roof/structure surface extraction -> footprint-constrained shell -> orthophoto-assisted top appearance -> georeferenced export.
+## Invariants
 
-## Reference case
+- Horizontal CRS, vertical datum, units, source IDs and provenance stay explicit.
+- The authoritative building footprint is a hard planimetric constraint.
+- Missing geometry is not invented silently.
+- The rejected regular-grid proxy is not reused as production geometry.
+- LiDAR/raw/derived heavy assets remain outside Git.
+- Every host validation is tied to an exact code SHA.
+- The compact high structure is preserved as independent evidence until explicitly modelled.
 
-Espace des Forges / Théâtre des collines, Annecy.
+## Milestone A — roof-surface evidence
 
-Validated evidence already available locally:
-- RNB `1A6BNQQ3VXGZ`;
-- BD TOPO `BATIMENT0000000298370002`;
-- isolated class-6 building cloud: 19,404 points;
-- density approximately 45.3 pts/m²;
-- local ground median approximately 427.77 m IGN69;
-- compact high structure with returns up to approximately 29.17 m above local ground.
+IMPLEMENTED and HOST_VALIDATED on exact SHA `4e12ae8b3a659db233bdca30262923cb42beb20a`:
+- deterministic seeded RANSAC plane extraction;
+- least-squares refinement;
+- near-vertical rejection;
+- metric/georeferenced JSON report;
+- diagnostic local Z-up OBJ;
+- synthetic tests;
+- real Espace des Forges validation: 7 planes, 17,819 / 19,271 roof candidates assigned, coverage 0.924654, 4–7 cm plane RMSE.
 
-## First implementation slice
+Important interpretation: convex XY support hulls overlap and are diagnostic only. They are not final roof patch boundaries.
 
-Fit deterministic roof-like planes directly from the isolated building point cloud.
+## Milestone B — authoritative footprint alignment
 
-Requirements:
-- retain explicit horizontal CRS, vertical datum, units and local georeference origin;
-- use local XY coordinates for numerical conditioning while preserving absolute georeference in metadata;
-- use seeded RANSAC followed by least-squares refinement;
-- reject near-vertical/facade-like planes from the roof stage;
-- report support count, RMSE, area, slope, downslope aspect and convex XY support hull;
-- preserve high-structure height counts independently of plane fitting;
-- emit deterministic JSON plus a local-metric diagnostic OBJ;
-- do not claim the diagnostic OBJ is final geometry;
-- add synthetic tests for a known gabled roof before host validation.
+IMPLEMENTED_NOT_VALIDATED:
+- fetch RNB building by ID through the public building API in GeoJSON;
+- project EPSG:4326 to EPSG:2154;
+- express absolute and local XY using the exact roof-analysis origin;
+- deterministic JSON output;
+- local diagnostic OBJ footprint outline;
+- synthetic projection tests.
 
-## Acceptance for this slice
+Acceptance for the reference case:
+- RNB `1A6BNQQ3VXGZ` fetch succeeds;
+- projected area/bounds are coherent with the previously measured ~428.06 m² and ~27.5 x 30.4 m footprint;
+- footprint diagnostic and roof-plane diagnostic align in one local metric frame;
+- Git remains CLEAN.
 
-1. Synthetic gabled roof recovers its two known planes within bounded coefficient/slope error.
-2. Repeated runs with the same seed serialize identically.
-3. Output records EPSG/datum/origin/ground reference explicitly.
-4. Espace des Forges host run completes on the real isolated LAZ without modifying tracked files.
-5. Real-run report exposes plane count, coverage, RMSE/area/slope per plane and the already-known high-structure evidence.
-6. Diagnostic OBJ opens in Blender with Z up and local metric coordinates.
+## Milestone C — topology-constrained roof patches
 
-## Next slices
+NEXT after Milestone B validation:
+- replace unconstrained convex support hulls with footprint-constrained roof regions;
+- infer adjacency/ridge/eave candidates from accepted plane intersections and LiDAR support;
+- reject impossible overlaps explicitly;
+- preserve unresolved regions rather than filling them by guesswork;
+- generate a topology report before creating a shell.
 
-- inspect and tune real roof segmentation without overfitting;
-- intersect roof patches with the authoritative footprint;
-- derive eaves/walls and build a bounded shell;
-- preserve or separately model the compact high structure;
-- validate manifold/watertightness and metric/georeferenced export;
-- add orthophoto support only after geometry is stable.
+## Milestone D — bounded shell
 
-## Explicit non-goals
+- derive eaves/walls from footprint + validated roof topology;
+- assemble a clean bounded shell;
+- verify manifold/boundary status explicitly;
+- keep the compact high structure as separate geometry until supported by its own segmentation;
+- export local and georeferenced metadata together.
 
-- regular-grid vertical extrusion as final geometry;
-- inventing facade detail not supported by evidence;
-- using rejected Panoramax/KartaView imagery for this reference building;
-- full texture baking in this slice.
+## Later enrichment
+
+- orthophoto/top appearance after geometry is stable;
+- facade/public imagery only if an automatic viability gate passes;
+- photogrammetry only when useful overlapping views actually exist.
