@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "source_image_suffix": "page-05-image-01.jpeg",
+  "notes": "Workspace-specific image registration for the clean exterior photo extracted from page 5. The reconstruction code is generic; only these photo control regions are site evidence.",
+  "regions": [
+    {
+      "id": "front_gable",
+      "kind": "single_wall",
+      "wall_ids": ["wall-03"],
+      "image_quad": [[47.0, 760.0], [250.0, 760.0], [250.0, 306.0], [19.0, 400.0]],
+      "metric_z": [-0.94, 11.70],
+      "accept_classes": ["window", "door"],
+      "max_openings": 4
+    },
+    {
+      "id": "side_upper",
+      "kind": "single_wall",
+      "wall_ids": ["wall-06"],
+      "image_quad": [[278.0, 565.0], [612.0, 635.0], [585.0, 485.0], [250.0, 306.0]],
+      "metric_z": [6.45, 11.57],
+      "accept_classes": ["window"],
+      "max_openings": 10
+    },
+    {
+      "id": "side_lower",
+      "kind": "aggregate_plane",
+      "wall_ids": ["wall-18", "wall-19", "wall-21", "wall-25"],
+      "image_quad": [[278.0, 760.0], [650.0, 760.0], [612.0, 635.0], [278.0, 565.0]],
+      "metric_z": [-0.94, 5.95],
+      "accept_classes": ["window", "door"],
+      "max_openings": 8
+    }
+  ],
+  "manual_features": [
+    {
+      "id": "front_quatrefoil",
+      "region": "front_gable",
+      "class": "quatrefoil",
+      "bbox_px": [112.0, 286.0, 139.0, 316.0]
+    }
+  ]
+}
