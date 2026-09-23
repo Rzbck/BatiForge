@@ -20,7 +20,7 @@ Default branch: `main`
 Current active work:
 - issue `#7` — Implement building-centric reconstruction core;
 - branch `feat/building-core-20260922`;
-- PR `#8` — deterministic LiDAR roof-plane core;
+- PR `#8` — deterministic LiDAR roof-plane core + authoritative RNB footprint alignment;
 - active plan `docs/exec-plans/active/0002-building-core.md`.
 
 Imagery survey core was merged to `main` through PR `#5` at merge commit `9d7261c219c76aaa4cabd3db7e41e58c33919a63`.
@@ -114,12 +114,13 @@ Interpretation constraints:
 
 ## IMPLEMENTED_NOT_VALIDATED — authoritative footprint alignment
 
-The active branch now also contains an RNB footprint acquisition/projection stage:
+Current branch HEAD includes:
 - fetch by RNB ID from the public RNB building API in GeoJSON;
 - project EPSG:4326 footprint geometry to EPSG:2154;
 - reuse the exact roof-analysis local origin so footprint and roof diagnostics share one metric frame;
 - deterministic JSON plus local Z-up diagnostic OBJ outline;
-- no raw/source data tracked in Git.
+- synthetic projection tests;
+- fix for the `python -m ...roof_planes` eager-import RuntimeWarning seen during host validation.
 
 This footprint stage is not HOST_VALIDATED on the real RNB feature yet.
 
