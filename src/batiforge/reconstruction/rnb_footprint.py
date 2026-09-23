@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import laspy
+import numpy as np
 import requests
 from pyproj import Transformer
 
@@ -30,9 +32,23 @@ class ProjectedFootprint:
             for ring in self.polygons_abs_xy
         )
 
+    @property
+    def bounds(self) -> dict[str, float]:
+        all_points = [point for ring in self.polygons_abs_xy for point in ring]
+        xs = [point[0] for point in all_points]
+        ys = [point[1] for point in all_points]
+        return {
+            "min_x": min(xs),
+            "max_x": max(xs),
+            "min_y": min(ys),
+            "max_y": max(ys),
+            "width_m": max(xs) - min(xs),
+            "height_m": max(ys) - min(ys),
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "rnb_id": self.rnb_id,
             "source_url": self.source_url,
             "source_crs": self.source_crs,
@@ -47,6 +63,7 @@ class ProjectedFootprint:
                 [[round(x, 4), round(y, 4)] for x, y in ring]
                 for ring in self.polygons_local_xy
             ],
+            "bounds": {key: round(value, 4) for key, value in self.bounds.items()},
             "planimetric_area_m2": round(
                 sum(abs(_signed_area(ring)) for ring in self.polygons_abs_xy), 3
             ),
@@ -71,13 +88,18 @@ def _outer_rings_from_geometry(geometry: dict[str, Any]) -> list[list[list[float
     coordinates = geometry.get("coordinates")
 
     if geometry_type == "Polygon" and isinstance(coordinates, list) and coordinates:
+        if len(coordinates) != 1:
+            raise ValueError("RNB footprint contains interior rings; refusing to discard holes")
         return [coordinates[0]]
 
     if geometry_type == "MultiPolygon" and isinstance(coordinates, list):
         rings: list[list[list[float]]] = []
         for polygon in coordinates:
-            if isinstance(polygon, list) and polygon:
-                rings.append(polygon[0])
+            if not isinstance(polygon, list) or not polygon:
+                continue
+            if len(polygon) != 1:
+                raise ValueError("RNB footprint contains interior rings; refusing to discard holes")
+            rings.append(polygon[0])
         return rings
 
     raise ValueError(f"unsupported RNB geometry type: {geometry_type!r}")
@@ -162,6 +184,68 @@ def fetch_rnb_footprint(
     )
 
 
+def _points_in_ring(xy: np.ndarray, ring: tuple[tuple[float, float], ...]) -> np.ndarray:
+    """Vectorized odd-even point-in-polygon test for one simple ring."""
+
+    points = np.asarray(xy, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 2:
+        raise ValueError("xy must be an Nx2 array")
+    polygon = np.asarray(ring, dtype=np.float64)
+    if len(polygon) < 3:
+        return np.zeros(len(points), dtype=bool)
+
+    x = points[:, 0]
+    y = points[:, 1]
+    inside = np.zeros(len(points), dtype=bool)
+    xj, yj = polygon[-1]
+    for xi, yi in polygon:
+        crosses = (yi > y) != (yj > y)
+        denominator = yj - yi
+        safe = denominator if abs(denominator) > 1e-15 else 1e-15
+        x_cross = (xj - xi) * (y - yi) / safe + xi
+        inside ^= crosses & (x < x_cross)
+        xj, yj = xi, yi
+    return inside
+
+
+def lidar_alignment_metrics(
+    lidar_path: Path,
+    footprint: ProjectedFootprint,
+    *,
+    classification: int | None = 6,
+) -> dict[str, Any]:
+    las = laspy.read(lidar_path)
+    xy = np.column_stack((np.asarray(las.x), np.asarray(las.y))).astype(np.float64)
+
+    if classification is not None and "classification" in las.point_format.dimension_names:
+        classes = np.asarray(las.classification)
+        xy = xy[classes == classification]
+
+    if len(xy) == 0:
+        raise ValueError("no LiDAR points remain for footprint alignment")
+
+    inside = np.zeros(len(xy), dtype=bool)
+    for ring in footprint.polygons_abs_xy:
+        inside |= _points_in_ring(xy, ring)
+
+    inside_count = int(inside.sum())
+    total = int(len(xy))
+    outside_count = total - inside_count
+    return {
+        "lidar_point_count": total,
+        "inside_footprint_count": inside_count,
+        "outside_footprint_count": outside_count,
+        "inside_ratio": round(inside_count / total, 6),
+        "classification": classification,
+        "lidar_bounds": {
+            "min_x": round(float(np.min(xy[:, 0])), 4),
+            "max_x": round(float(np.max(xy[:, 0])), 4),
+            "min_y": round(float(np.min(xy[:, 1])), 4),
+            "max_y": round(float(np.max(xy[:, 1])), 4),
+        },
+    }
+
+
 def write_footprint_obj(path: Path, footprint: ProjectedFootprint) -> None:
     lines = [
         "# BatiForge authoritative RNB footprint diagnostic OBJ",
@@ -192,7 +276,7 @@ def write_footprint_obj(path: Path, footprint: ProjectedFootprint) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Fetch and project the authoritative RNB footprint for BatiForge."
+        description="Fetch/project the authoritative RNB footprint and optionally audit LiDAR alignment."
     )
     parser.add_argument("--rnb-id", required=True)
     parser.add_argument("--origin-x", type=float, required=True)
@@ -200,6 +284,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-crs", default="EPSG:2154")
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-obj", type=Path)
+    parser.add_argument("--lidar", type=Path)
+    parser.add_argument("--classification", type=int, default=6)
+    parser.add_argument("--all-classes", action="store_true")
     return parser
 
 
@@ -212,20 +299,39 @@ def main(argv: list[str] | None = None) -> int:
             origin_y=args.origin_y,
             target_crs=args.target_crs,
         )
-    except (requests.RequestException, ValueError) as exc:
+        payload = footprint.to_dict()
+        if args.lidar:
+            payload["lidar_alignment"] = lidar_alignment_metrics(
+                args.lidar,
+                footprint,
+                classification=None if args.all_classes else args.classification,
+            )
+    except (OSError, requests.RequestException, ValueError, laspy.errors.LaspyException) as exc:
         print(f"BatiForge RNB footprint acquisition failed: {exc}")
         return 2
 
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.write_text(footprint.to_json(), encoding="utf-8", newline="\n")
+    args.output_json.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     if args.output_obj:
         write_footprint_obj(args.output_obj, footprint)
 
     print(
         f"RNB footprint: rnb_id={footprint.rnb_id} "
         f"polygons={len(footprint.polygons_abs_xy)} "
-        f"area_m2={footprint.to_dict()['planimetric_area_m2']:.3f}"
+        f"area_m2={payload['planimetric_area_m2']:.3f} "
+        f"bbox={payload['bounds']['width_m']:.3f}x{payload['bounds']['height_m']:.3f}m"
     )
+    if "lidar_alignment" in payload:
+        alignment = payload["lidar_alignment"]
+        print(
+            "LiDAR alignment: "
+            f"inside={alignment['inside_footprint_count']}/{alignment['lidar_point_count']} "
+            f"ratio={alignment['inside_ratio']:.4f}"
+        )
     print(f"json: {args.output_json}")
     if args.output_obj:
         print(f"diagnostic obj: {args.output_obj}")
